@@ -51,28 +51,6 @@ ANCHOR_WINDOW_END = "return to portrait (experimental)"
 ANCHOR_END_IMAGE = "end image (experimental)"
 WINDOW = 93
 
-# Upstream's negative prompt. Unused at cfg 1 (the distilled setting), kept so a
-# higher cfg has it.
-NEGATIVE = ("Close-up, Bright tones, overexposed, static, blurred details, subtitles, "
-            "style, works, paintings, images, static, overall gray, worst quality, low "
-            "quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly "
-            "drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused "
-            "fingers, still picture, messy background, three legs, many people in the "
-            "background, walking backwards")
-
-# Talking-Head Prompt defaults, written for an example portrait. Each starts with its
-# field name because a multiline widget hides its label once it holds text; the node
-# strips the tag before building the prompt.
-PROMPT_FIELDS = [
-    "subject: a woman with long, dark brown wavy hair falling past her shoulders, "
-    "wearing a dark navy V-neck blouse with a soft satin sheen, framed from the chest "
-    "up and facing the camera",
-    "background: a plain, seamless light-grey studio backdrop with soft, even studio "
-    "lighting",
-    "delivery: a warm, friendly, confident voice at a relaxed pace",
-    "extra: She keeps a gentle, natural smile between sentences, and her hair and "
-    "blouse stay neatly in place.",
-]
 BYPASS = 4  # LiteGraph node mode: pass the input straight through
 
 VARIANTS = {
@@ -152,16 +130,13 @@ def note_inputs(v):
 Larger canvases need more memory and time."""
 
 
-NOTE_PROMPT = """## 2. Describe the shot
+NOTE_PROMPT = """## 2. Prompt (optional)
 
-LongCat follows long, concrete prompts best: who is on screen, what they wear, that they are **speaking**, and the scene.
+**Leave it empty** for a generic talking-head prompt: the person speaks to the camera, with small natural motion, a static camera and an unchanged background. The person and background themselves come from the portrait.
 
-- **subject:** who is on screen, as seen in the portrait.
-- **background:** what is behind them, concretely. Naming it helps hold it in place.
-- **delivery:** how they speak.
-- **extra** (optional): one small, calm action.
+To steer it, type one or two sentences about the portrait, e.g. *A woman with brown hair in a navy blazer, in front of a plain grey wall.* They go in front of the generic prompt. Naming the background can help hold it in place on long videos.
 
-The fields come filled in for an example portrait: rewrite them for yours. The `subject:` style tags are optional and removed automatically. The text is encoded once and cached."""
+There is no negative prompt: the distilled model runs at cfg 1, which does not use one. The text is encoded once and cached."""
 
 
 def note_plan(v):
@@ -236,7 +211,7 @@ def note_start(w, v):
                "of the next unfinished file. When every file is done the queue is "
                "cleared, so extra runs cost nothing.")
         more = ("**Add files later:** drop them in the folder and run again; finished "
-                "videos are skipped. The same portrait and description are used for every "
+                "videos are skipped. The same portrait and prompt are used for every "
                 "file.")
     else:
         audio = "2. **Load Voiceover** - your speech track, any length."
@@ -256,7 +231,7 @@ def note_start(w, v):
 
 1. **Load Portrait** - one person facing the camera, face clearly visible.{end}
 {audio}
-3. **Talking-Head Prompt** - describe the person and background in the portrait.
+3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.
 {test} Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.
 {run}
 6. The final video lands in `output/`, then the queue is cleared.
@@ -429,17 +404,17 @@ def build(variant="standard", batch=False):
            title="Height", size=size(90))
 
     # ---------------------------------------------------------------- 2. prompt
-    g.node(30, "LongCatLongformPrompt", outputs=[("prompt", "STRING")],
-           widgets=list(PROMPT_FIELDS),
-           title="Talking-Head Prompt (describe subject + background)", color=INPUT,
-           cnr=LF, size=size(640))
+    g.node(30, "LongCatLongformPrompt", outputs=[("prompt", "STRING")], widgets=[""],
+           title="Prompt (optional - leave empty or describe the portrait)",
+           cnr=LF, size=size(200))
     g.node(57, "WanVideoTextEncodeCached",
            inputs=[("extender_args", "WANVIDEOPROMPTEXTENDER_ARGS", I, True),
                    ("positive_prompt", "STRING", W, False)],
            outputs=[("text_embeds", "WANVIDEOTEXTEMBEDS"),
                     ("negative_text_embeds", "WANVIDEOTEXTEMBEDS"),
                     ("positive_prompt", "STRING")],
-           widgets=[TEXT_ENCODER, "bf16", "", NEGATIVE, "disabled", True, "gpu"],
+           # No negative prompt: the distilled model samples at cfg 1, which skips it.
+           widgets=[TEXT_ENCODER, "bf16", "", "", "disabled", True, "gpu"],
            title="Text encoder (umt5-xxl, cached)", models=[(TEXT_ENCODER, "text_encoders")],
            cnr=WV, size=size(300))
 
@@ -639,7 +614,7 @@ def build(variant="standard", batch=False):
     guide = [50, 51] + ([54, 52] if v["end_image"] else []) + [53, 55, 56]
     stages = [
         ("1. Your inputs", "input", inputs, [3]),
-        ("2. Describe the shot", "prompt", [30, 57], [4]),
+        ("2. Prompt (optional)", "prompt", [30, 57], [4]),
         ("3. Chunk plan (automatic)", "plan", [20], [5]),
         ("4. Models (automatic)", "models", [42, 41, 40, 43, 45, 46, 47], [6]),
         ("5. Opening, reference + audio", "guide", guide, [7]),

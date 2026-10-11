@@ -22,7 +22,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 1. Open ComfyUI's Workflows sidebar.
 2. Select **longcat_avatar_talking_head_draft** (640, quick test) or **longcat_avatar_talking_head** (960).
 3. Load your portrait and voiceover.
-4. In **Talking-Head Prompt**, describe the person and background in the portrait.
+4. **Prompt** is optional: leave it empty, or describe the portrait in a sentence.
 5. Test one chunk at batch count 1.
 6. Queue roughly audio seconds divided by 3.2, plus a margin. Each item renders the next unfinished chunk, continuing from the one before.
 

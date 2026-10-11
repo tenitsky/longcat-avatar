@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar Talking Head\n\n960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Talking-Head Prompt** - describe the person and background in the portrait.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar Talking Head\n\n960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -87,7 +87,7 @@
    "type": "MarkdownNote",
    "pos": [
     1320,
-    1200
+    760
    ],
    "size": [
     520,
@@ -103,7 +103,7 @@
    },
    "title": "About stage 2",
    "widgets_values": [
-    "## 2. Describe the shot\n\nLongCat follows long, concrete prompts best: who is on screen, what they wear, that they are **speaking**, and the scene.\n\n- **subject:** who is on screen, as seen in the portrait.\n- **background:** what is behind them, concretely. Naming it helps hold it in place.\n- **delivery:** how they speak.\n- **extra** (optional): one small, calm action.\n\nThe fields come filled in for an example portrait: rewrite them for yours. The `subject:` style tags are optional and removed automatically. The text is encoded once and cached."
+    "## 2. Prompt (optional)\n\n**Leave it empty** for a generic talking-head prompt: the person speaks to the camera, with small natural motion, a static camera and an unchanged background. The person and background themselves come from the portrait.\n\nTo steer it, type one or two sentences about the portrait, e.g. *A woman with brown hair in a navy blazer, in front of a plain grey wall.* They go in front of the generic prompt. Naming the background can help hold it in place on long videos.\n\nThere is no negative prompt: the distilled model runs at cfg 1, which does not use one. The text is encoded once and cached."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -443,7 +443,7 @@
    ],
    "size": [
     460,
-    640
+    200
    ],
    "flags": {},
    "order": 14,
@@ -463,22 +463,17 @@
     "Node name for S&R": "LongCatLongformPrompt",
     "cnr_id": "comfyui-longcat-longform"
    },
-   "title": "Talking-Head Prompt (describe subject + background)",
+   "title": "Prompt (optional - leave empty or describe the portrait)",
    "widgets_values": [
-    "subject: a woman with long, dark brown wavy hair falling past her shoulders, wearing a dark navy V-neck blouse with a soft satin sheen, framed from the chest up and facing the camera",
-    "background: a plain, seamless light-grey studio backdrop with soft, even studio lighting",
-    "delivery: a warm, friendly, confident voice at a relaxed pace",
-    "extra: She keeps a gentle, natural smile between sentences, and her hair and blouse stay neatly in place."
-   ],
-   "color": "#322",
-   "bgcolor": "#533"
+    ""
+   ]
   },
   {
    "id": 57,
    "type": "WanVideoTextEncodeCached",
    "pos": [
     1350,
-    810
+    370
    ],
    "size": [
     460,
@@ -545,7 +540,7 @@
     "umt5-xxl-enc-bf16.safetensors",
     "bf16",
     "",
-    "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards",
+    "",
     "disabled",
     true,
     "gpu"
@@ -2132,12 +2127,12 @@
   },
   {
    "id": 2,
-   "title": "2. Describe the shot",
+   "title": "2. Prompt (optional)",
    "bounding": [
     1320,
     0,
     520,
-    1140
+    700
    ],
    "color": "#b06634",
    "font_size": 26,

@@ -14,7 +14,7 @@ from one item to the next through files on disk.
 | **Opening + Reference** | Chunk 0: the portrait as a single opening frame, no reference. Later chunks: the previous chunk's last 13 frames, and the portrait (or End Image on the final chunk) as reference latent |
 | **Write + Stitch** | Drops the lead-in, writes the chunk as mp4 and keeps its last 13 frames for the next window. On the last chunk it concatenates them all and muxes in the original track |
 | **Name From Audio File** | Names the session and output after the Load Audio file |
-| **Talking-Head Prompt** | A descriptive prompt from short `subject`, `background`, `delivery` and `extra` fields |
+| **Prompt (optional)** | A generic talking-head prompt, led by an optional `description` of the portrait |
 | **v1.5 Distill Sigmas** | Upstream's exact 8-step DMD schedule (shift 7). The wrapper's `longcat_distill_euler` is the v1.0 one |
 | **Audio From Folder (batch)** | Loads the first file in a folder (name order) whose video isn't finished. Wire `name` to Split, Opening and Write `session`, and `filename` to Write. Clears the queue when every file is done |
 

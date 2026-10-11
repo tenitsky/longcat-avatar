@@ -621,71 +621,38 @@ class LongCatLongformWrite:
         return (msg,)
 
 
-DEFAULT_SUBJECT = "a person"
-DEFAULT_BACKGROUND = "the background"
-DEFAULT_DELIVERY = "a clear, calm, natural voice"
+def talking_head_prompt(description=""):
+    """A single-shot prompt for a locked-off talking head.
 
-
-def _field(text, name):
-    """A description with whitespace collapsed and an optional 'name:' tag removed.
-
-    Multiline widgets hide their label once they hold text, so the bundled
-    workflows start each value with its field name ("subject: a woman ...").
+    Identity and background come from the portrait, so the fixed part only asks for
+    speech, small natural motion and a static scene. An optional description of the
+    portrait leads the prompt; LongCat follows concrete descriptions best.
     """
-    text = " ".join((text or "").split())
-    if text.lower().startswith(name + ":"):
-        text = text[len(name) + 1:].strip()
-    return text
-
-
-def talking_head_prompt(subject="", background="", delivery="", extra=""):
-    """A descriptive single-shot prompt for a locked-off talking head.
-
-    LongCat's guidance: long, concrete prompts with appearance, action and scene, and a
-    clear speaking cue. The background is named so the model keeps it in place.
-    """
-    subject = _field(subject, "subject") or DEFAULT_SUBJECT
-    background = _field(background, "background") or DEFAULT_BACKGROUND
-    delivery = _field(delivery, "delivery") or DEFAULT_DELIVERY
-    parts = [
-        f"{subject[0].upper()}{subject[1:]} is speaking directly to the camera in "
-        f"{delivery}, lips moving in sync with the speech, with natural blinking, small "
-        "eyebrow movements and gentle head nods, while the shoulders and body stay in "
-        "place.",
-        f"Behind them, {background} stays the same throughout, with the same lighting.",
+    description = " ".join((description or "").split())
+    parts = [description] if description else []
+    parts += [
+        f"{'The' if description else 'A'} person is speaking directly to the camera in a "
+        "clear, calm, natural voice, lips moving in sync with the speech, with natural "
+        "blinking, small eyebrow movements and gentle head nods, while the shoulders and "
+        "body stay in place.",
+        "The background and lighting stay the same throughout.",
         "The camera is static on a tripod and the framing does not change.",
     ]
-    extra = _field(extra, "extra")
-    if extra:
-        parts.append(extra)
     return " ".join(parts)
 
 
 class LongCatLongformPrompt:
-    """Build the prompt from a few plain descriptions of the portrait."""
+    """The talking-head prompt, with an optional description of the portrait."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                "subject": ("STRING", {
-                    "multiline": True, "default": "",
-                    "tooltip": "Who is on screen, as seen in the portrait: e.g. 'a woman in "
-                               "her thirties with shoulder-length brown hair, wearing a navy "
-                               "blazer over a white shirt'."}),
-                "background": ("STRING", {
-                    "multiline": True, "default": "",
-                    "tooltip": "What is behind them, concretely: e.g. 'a plain light-grey "
-                               "wall with soft even lighting'."}),
-                "delivery": ("STRING", {
-                    "default": DEFAULT_DELIVERY,
-                    "tooltip": "How they speak, completing 'speaking to the camera in ...'."}),
-            },
             "optional": {
-                "extra": ("STRING", {
+                "description": ("STRING", {
                     "multiline": True, "default": "",
-                    "tooltip": "Optional extra sentence, e.g. 'She smiles briefly between "
-                               "sentences.' Keep motion small."}),
+                    "tooltip": "Optional. Leave empty for a generic talking-head prompt, "
+                               "or describe the portrait: e.g. 'A woman with brown hair in "
+                               "a navy blazer, in front of a plain grey wall.'"}),
             },
         }
 
@@ -694,8 +661,8 @@ class LongCatLongformPrompt:
     FUNCTION = "build"
     CATEGORY = "LongCat Longform"
 
-    def build(self, subject, background, delivery, extra=""):
-        return (talking_head_prompt(subject, background, delivery, extra),)
+    def build(self, description=""):
+        return (talking_head_prompt(description),)
 
 
 class LongCatLongformSigmas:
@@ -929,7 +896,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LongCatLongformCarry": "LongCat Longform: Opening + Reference",
     "LongCatLongformWrite": "LongCat Longform: Write + Stitch",
     "LongCatLongformAudioName": "LongCat Longform: Name From Audio File",
-    "LongCatLongformPrompt": "LongCat Longform: Talking-Head Prompt",
+    "LongCatLongformPrompt": "LongCat Longform: Prompt (optional)",
     "LongCatLongformSigmas": "LongCat Longform: v1.5 Distill Sigmas",
     "LongCatLongformAudioFolder": "LongCat Longform: Audio From Folder (batch)",
 }

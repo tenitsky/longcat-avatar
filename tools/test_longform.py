@@ -230,19 +230,19 @@ class SplitTests(unittest.TestCase):
         self.assertEqual((name, filename), ("selected_draft", "selected_draft.mp4"))
         self.assertEqual(lc._session_from_prompt(prompt), name)
 
-    def test_prompt_fields(self):
-        text = lc.talking_head_prompt("subject: a man in a grey suit",
-                                      "background: a plain white wall", "")
-        self.assertTrue(text.startswith("A man in a grey suit is speaking"))
-        self.assertIn("a plain white wall stays the same", text)
-        self.assertIn(lc.DEFAULT_DELIVERY, text)
+    def test_prompt(self):
+        generic = lc.talking_head_prompt("")
+        self.assertTrue(generic.startswith("A person is speaking directly to the camera"))
+        self.assertEqual(lc.talking_head_prompt("  \n "), generic)
+        text = lc.talking_head_prompt("A man in a grey suit,\n  in front of a white wall.")
+        self.assertTrue(text.startswith("A man in a grey suit, in front of a white wall. "
+                                        "The person is speaking"))
         for w in builder.WORKFLOWS:
             node = next(n for n in builder.build(w["variant"], w["batch"])["nodes"]
                         if n["type"] == "LongCatLongformPrompt")
+            self.assertEqual(node["widgets_values"], [""])
             out = lc.LongCatLongformPrompt().build(*node["widgets_values"])[0]
-            for tag in ("subject:", "background:", "delivery:", "extra:"):
-                self.assertNotIn(tag, out.lower())
-            self.assertIn("speaking", out)
+            self.assertEqual(out, generic)
 
 
 @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg and ffprobe required")

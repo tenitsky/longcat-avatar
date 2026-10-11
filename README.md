@@ -168,8 +168,10 @@ For the first launch, check the logs for **`Network Volume workspace ready at
    **`longcat_avatar_talking_head_draft`** for a first test.
 2. Set **Load Portrait** and **Load Voiceover**. The output is named after the audio
    file automatically.
-3. In **Talking-Head Prompt**, describe the `subject` and `background` you can see in
-   the portrait, in a few concrete words. LongCat follows long, descriptive prompts best.
+3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
+   the camera, small natural motion, static camera and background), or describe the
+   portrait in a sentence, e.g. *A woman in a navy blazer, in front of a plain grey
+   wall.* The person and background come from the portrait either way.
 4. **Test one chunk first:** batch count 1, then check
    `output/longcat_longform/<name>/chunk_0000.mp4` for lip sync, identity and background.
 5. Queue again with a batch count of at least **audio seconds ÷ 3.2**, plus a margin.
@@ -232,8 +234,8 @@ stage and a **Start here** note on the far left. Red nodes are the ones you set.
 1. Put the voiceovers in `ComfyUI/input/batch_audio/` (created at boot). Upload them with
    JupyterLab (port 8888) or FileBrowser. Accepted: `.wav`, `.mp3`, `.flac`, `.m4a`,
    `.aac`, `.ogg`, `.opus`.
-2. Open a `_batch` workflow, set the portrait and the Talking-Head Prompt. The same
-   portrait and description are used for every file.
+2. Open a `_batch` workflow and set the portrait (and the optional prompt). The same
+   portrait and prompt are used for every file.
 3. Test with batch count 1, then queue a large batch count: roughly the total seconds of
    all files ÷ 3.2, plus a margin.
 
