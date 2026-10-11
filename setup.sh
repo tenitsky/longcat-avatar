@@ -379,6 +379,29 @@ fi
 echo "Installing workflows..."
 WF_DEST="$COMFYUI_PATH/user/default/workflows"
 mkdir -p "$WF_DEST"
+# Workflows shipped under earlier names. Each is removed only while it is
+# byte-identical to a version this repo shipped, so a copy edited on the pod is kept.
+RETIRED_WORKFLOWS="
+af1846410b415b004f083d3f6357450912f595db2c59f2df0343785aa4c08439 longcat_avatar_talking_head.json
+3ec6605898ab35b1ca217a12804d5450bd15c315d54cf68a5d74f15abe5c7910 longcat_avatar_talking_head.json
+862fca53113c2fc2bd9ec54ac35edb182b8a2e3bd1860b8276b1ea4d36132cb0 longcat_avatar_talking_head_draft.json
+0649d070bb73c9192d13ddf63308639c7b4be1ddc25e6056ca1d217e37030547 longcat_avatar_talking_head_draft.json
+c02021274fbe3bb5ec6aef35e18b838ff01d4677704c6d04e1c1e729051fa706 longcat_avatar_talking_head_batch.json
+840769ad82021b53b1d07effc13019822a3440bc8b3ec097f738ecb13bfe51a1 longcat_avatar_talking_head_batch.json
+7c9ca7ec8a1fbd3c093ba49b59fae2dd7ef81358333ad05884d8539979e76d32 longcat_avatar_talking_head_draft_batch.json
+5e986c107dd281d98ba0672a24b3d9c5e9b19eb8e41935e9f8706880a09669e9 longcat_avatar_talking_head_draft_batch.json
+1e6927c91855e43648110ef397398bdd11179e455b7460db7c7db230f9806b60 longcat_avatar_return_to_portrait.json
+a5a57502909342733843872f796df2b101deee2b68aa6a3b1d5f213afe15094e longcat_avatar_return_to_portrait.json
+95cf49958e8e4116eb8f09565c1cee9ff658ac63326ce2e39cce3779cab4399d longcat_avatar_start_to_end.json
+ca1ad53684b8e5ae390fcdef8853861ef40b2f16b6e0734b97bceaa89c5ac8b1 longcat_avatar_start_to_end.json
+"
+while read -r sum name; do
+  [ -n "$name" ] && [ -f "$WF_DEST/$name" ] || continue
+  if [ "$(sha256sum "$WF_DEST/$name" | cut -d' ' -f1)" = "$sum" ]; then
+    rm -f "$WF_DEST/$name"
+    echo "  removed renamed workflow: $name"
+  fi
+done <<< "$RETIRED_WORKFLOWS"
 if [ -d "$SCRIPT_DIR/workflows" ]; then
   # Never overwrite a workflow already edited on the Network Volume.
   for workflow in "$SCRIPT_DIR/workflows/"*.json; do

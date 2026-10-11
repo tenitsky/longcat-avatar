@@ -12,8 +12,8 @@ Opening the result in ComfyUI and saving it again is fine - the UI adds sizes an
 cosmetic properties, but the wiring stays the same.
 
 Every workflow shares one graph. The variants differ only in canvas, anchor mode and
-whether there is an End Image, as set in VARIANTS. Standard and Draft also come in a
-batch version that renders every audio file in a folder.
+whether there is an End Image, as set in VARIANTS. Fast and High Quality also come in
+a batch version that renders every audio file in a folder.
 
 Model nodes come from kijai/ComfyUI-WanVideoWrapper (LongCat support lives there;
 ComfyUI has no native LongCat video nodes). Their widget order follows that pack's
@@ -54,48 +54,54 @@ WINDOW = 93
 BYPASS = 4  # LiteGraph node mode: pass the input straight through
 
 VARIANTS = {
-    "standard": dict(
-        title="LongCat Avatar Talking Head",
-        summary="960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk "
-                "continues from the previous one's last frames, so there are no pose "
-                "resets at the joins.",
+    "fast": dict(
+        title="LongCat Avatar - Fast (640)",
+        summary="Fast preview at 640 x 640 (LongCat's 480p tier): under half the pixels "
+                "of High Quality. Check timing, lip sync and framing here, then render "
+                "the final with High Quality (960).",
+        canvas=640, anchor=ANCHOR_IDENTITY, end_image=False, suffix="_fast"),
+    "high_quality": dict(
+        title="LongCat Avatar - High Quality (960)",
+        summary="Final quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. "
+                "Every chunk continues from the previous one's last frames, so there "
+                "are no pose resets at the joins.",
         canvas=960, anchor=ANCHOR_IDENTITY, end_image=False, suffix=""),
-    "draft": dict(
-        title="LongCat Avatar Talking Head - Draft",
-        summary="640 x 640 (LongCat's 480p tier): under half the pixels of the standard "
-                "workflow. Check timing, lip sync and framing here, then render the "
-                "final at 960.",
-        canvas=640, anchor=ANCHOR_IDENTITY, end_image=False, suffix="_draft"),
-    "anchored": dict(
-        title="LongCat Avatar - Return to Portrait (experimental)",
+    "return_to_portrait": dict(
+        title="LongCat Avatar - Experimental: Return to Portrait (640)",
         summary="EXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can "
                 "place its identity reference at any point in a window. This workflow "
                 "puts the portrait on every window's last frame, pulling each 3.2 s "
                 "chunk back toward the portrait pose, the closest LongCat gets to "
                 "MiniMax H3's first/last-frame anchoring. Expect less drift over long "
                 "videos and possibly a repeating motion every chunk.",
-        canvas=640, anchor=ANCHOR_WINDOW_END, end_image=False, suffix="_anchored"),
-    "start_end": dict(
-        title="LongCat Avatar - Start Image to End Image (experimental)",
+        canvas=640, anchor=ANCHOR_WINDOW_END, end_image=False,
+        suffix="_return_to_portrait"),
+    "start_to_end": dict(
+        title="LongCat Avatar - Experimental: Start Image to End Image (640)",
         summary="EXPERIMENTAL, 640 x 640. Starts on the Portrait and steers the final "
                 "chunk toward the End Image: same person, a different pose, expression "
                 "or framing. It is a soft pull on the last frame, not a pinned frame; "
                 "LongCat has no true end-frame input.",
-        canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, suffix="_start_end"),
+        canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, suffix="_start_to_end"),
 }
 
+# Numbered so the Workflows sidebar lists them in the order to use them: a fast test,
+# the final render, the same two for a folder of voiceovers, then the experiments.
 WORKFLOWS = [
-    dict(variant="standard", batch=False, path="longcat_avatar_talking_head.json",
-         id="7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17"),
-    dict(variant="draft", batch=False, path="longcat_avatar_talking_head_draft.json",
+    dict(variant="fast", batch=False, path="longcat_1_fast_640.json",
          id="c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05"),
-    dict(variant="standard", batch=True, path="longcat_avatar_talking_head_batch.json",
-         id="2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264"),
-    dict(variant="draft", batch=True, path="longcat_avatar_talking_head_draft_batch.json",
+    dict(variant="high_quality", batch=False, path="longcat_2_high_quality_960.json",
+         id="7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17"),
+    dict(variant="fast", batch=True, path="longcat_3_fast_640_batch_folder.json",
          id="e1a7b4c9-3d62-4f15-a8e0-5b9c2d7f4e38"),
-    dict(variant="anchored", batch=False, path="longcat_avatar_return_to_portrait.json",
+    dict(variant="high_quality", batch=True,
+         path="longcat_4_high_quality_960_batch_folder.json",
+         id="2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264"),
+    dict(variant="return_to_portrait", batch=False,
+         path="longcat_5_experimental_return_to_portrait_640.json",
          id="5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42"),
-    dict(variant="start_end", batch=False, path="longcat_avatar_start_to_end.json",
+    dict(variant="start_to_end", batch=False,
+         path="longcat_6_experimental_start_to_end_image_640.json",
          id="a8f3c1d6-2b9e-4e57-8c14-7d0e6b2f9a31"),
 ]
 
@@ -184,7 +190,7 @@ NOTE_SAMPLING = """## 6. Sampling + decode
 
 Fixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.
 
-Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Draft workflow."""
+Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."""
 
 
 def note_output(batch):
@@ -223,7 +229,7 @@ def note_start(w, v):
                 "its own folder; there is nothing to reset.")
     end = ("\n1b. **Load End Image** - the same person as they should look at the very "
            "end." if v["end_image"] else "")
-    return f"""# {v['title']}{' - Batch' if w['batch'] else ''}
+    return f"""# {v['title']}{' - Batch Folder (one video per voiceover)' if w['batch'] else ''}
 
 {v['summary']}
 
@@ -349,7 +355,7 @@ SPLIT_OUTPUTS = [("audio_chunk", "AUDIO"), ("whisper_audio", "AUDIO"),
                  ("use_end_image", "BOOLEAN"), ("chunk_index", "INT")]
 
 
-def build(variant="standard", batch=False):
+def build(variant="high_quality", batch=False):
     v = VARIANTS[variant]
     w = next(w for w in WORKFLOWS if w["variant"] == variant and w["batch"] == batch)
     g = Graph()

@@ -273,6 +273,9 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
 
         edited = sidebar / builder.WORKFLOWS[0]["path"]
         edited.write_text('{"edited_by_user": true}\n')
+        # An edited copy of a workflow shipped under an earlier name is not removed.
+        retired = sidebar / "longcat_avatar_talking_head.json"
+        retired.write_text('{"edited_by_user": true}\n')
         notebook = self.workspace / "my-notebook.ipynb"
         notebook.write_text('{"cells": []}\n')
         git_calls = len(self.lines(self.git_log))
@@ -286,6 +289,7 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         new_git = self.lines(self.git_log)[git_calls:]
         self.assertFalse([c for c in new_git if " fetch " in f" {c} "], new_git)
         self.assertEqual(edited.read_text(), '{"edited_by_user": true}\n')
+        self.assertEqual(retired.read_text(), '{"edited_by_user": true}\n')
         self.assertEqual(notebook.read_text(), '{"cells": []}\n')
         self.assertEqual(list(self.workspace.glob(".longcat-posix-*")), [])
 

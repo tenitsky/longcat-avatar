@@ -1,5 +1,5 @@
 {
- "id": "c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05",
+ "id": "5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42",
  "revision": 0,
  "last_node_id": 70,
  "last_link_id": 42,
@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar Talking Head - Draft\n\n640 x 640 (LongCat's 480p tier): under half the pixels of the standard workflow. Check timing, lip sync and framing here, then render the final at 960.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - Experimental: Return to Portrait (640)\n\nEXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can place its identity reference at any point in a window. This workflow puts the portrait on every window's last frame, pulling each 3.2 s chunk back toward the portrait pose, the closest LongCat gets to MiniMax H3's first/last-frame anchoring. Expect less drift over long videos and possibly a repeating motion every chunk.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -129,7 +129,7 @@
    },
    "title": "About stage 3",
    "widgets_values": [
-    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: identity** (upstream default): the portrait is the reference at frame index 10 of each window. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
+    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: return to portrait** (experimental): the reference sits on each window's last frame with no mask, pulling every chunk back toward the portrait. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Draft workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -361,7 +361,7 @@
    "widgets_values": [
     ".mp4",
     "",
-    "_draft"
+    "_return_to_portrait"
    ]
   },
   {
@@ -681,7 +681,7 @@
    },
    "title": "Split (next unfinished window)",
    "widgets_values": [
-    "identity (default)"
+    "return to portrait (experimental)"
    ]
   },
   {
@@ -1766,8 +1766,8 @@
     0,
     1,
     93,
-    "run1_draft",
-    "longcat_avatar_draft.mp4",
+    "run1_return_to_portrait",
+    "longcat_avatar_return_to_portrait.mp4",
     true,
     0
    ]

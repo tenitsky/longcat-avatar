@@ -796,7 +796,7 @@ class LongCatLongformAudioFolder:
                                "video, named after the file."}),
                 "name_suffix": ("STRING", {
                     "default": "",
-                    "tooltip": "Appended to every video and session name, e.g. _draft. "
+                    "tooltip": "Appended to every video and session name, e.g. _fast. "
                                "Change it to render the whole folder again."}),
                 "stop_when_done": ("BOOLEAN", {
                     "default": True,
@@ -857,7 +857,7 @@ class LongCatLongformAudioName:
                 "name_suffix": ("STRING", {
                     "default": "",
                     "tooltip": "Appended to both the session and output name. "
-                               "Use _draft to keep draft renders separate."}),
+                               "Use _fast to keep fast test renders separate."}),
             },
             "hidden": {"prompt": "PROMPT"},
         }

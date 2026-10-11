@@ -35,11 +35,11 @@ upstream uses 10, and the model card recommends 0 to 24). Moving it to the windo
 last frame, with no attention mask, draws that frame toward the reference picture. Two
 **experimental** workflows use it:
 
-- **`longcat_avatar_return_to_portrait`**: the portrait sits on the last frame of every
+- **`longcat_5_experimental_return_to_portrait_640`**: the portrait sits on the last frame of every
   window, pulling each chunk back toward the portrait pose. It is the closest LongCat
   gets to H3's anchoring. Expect less drift over long videos, and possibly a repeating
   motion each chunk.
-- **`longcat_avatar_start_to_end`**: starts on the Portrait and steers the **final**
+- **`longcat_6_experimental_start_to_end_image_640`**: starts on the Portrait and steers the **final**
   chunk toward an **End Image**: the same person in another pose, expression or framing.
   A clip shorter than one window is split into two chunks so the end image can apply.
 
@@ -165,7 +165,8 @@ For the first launch, check the logs for **`Network Volume workspace ready at
 ## After it boots
 
 1. Open ComfyUI (port 8188), open the **Workflows** sidebar and choose
-   **`longcat_avatar_talking_head_draft`** for a first test.
+   **`longcat_1_fast_640`** for a first test. Render the final video with
+   **`longcat_2_high_quality_960`**.
 2. Set **Load Portrait** and **Load Voiceover**. The output is named after the audio
    file automatically.
 3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
@@ -189,18 +190,25 @@ output-name node, or delete its folder under `output/longcat_longform/`.
 > `setup.sh` skips existing workflows, so a workflow you edited on the pod is never
 > overwritten on reboot. The flip side is that an updated workflow in this repo won't
 > reach an existing volume until you delete the old file from
-> `ComfyUI/user/default/workflows/` and restart.
+> `ComfyUI/user/default/workflows/` and restart. Workflows shipped under earlier names
+> (`longcat_avatar_*`) are removed at boot unless you edited them.
 
 ### Workflows
 
-| Workflow | Canvas | Anchor | Output suffix |
+The number gives the order to use them in. **Fast** is for testing timing, lip sync and
+framing; **High Quality** is the final render. **Batch folder** renders every voiceover
+in `ComfyUI/input/batch_audio/`, one video each; the others take one voiceover.
+
+| Workflow | Use it for | Canvas | Output suffix |
 |---|---|---|---|
-| `longcat_avatar_talking_head` | 960 × 960 (720p tier) | identity (upstream default) | none |
-| `longcat_avatar_talking_head_draft` | 640 × 640 (480p tier) | identity | `_draft` |
-| `longcat_avatar_talking_head_batch` | 960 × 960 | identity, every voiceover in a folder | none |
-| `longcat_avatar_talking_head_draft_batch` | 640 × 640 | identity, every voiceover in a folder | `_draft` |
-| `longcat_avatar_return_to_portrait` | 640 × 640 | **experimental**: portrait on each window's last frame | `_anchored` |
-| `longcat_avatar_start_to_end` | 640 × 640 | **experimental**: final chunk pulled to an End Image | `_start_end` |
+| `longcat_1_fast_640` | Fast test, one voiceover | 640 × 640 (480p tier) | `_fast` |
+| `longcat_2_high_quality_960` | Final video, one voiceover | 960 × 960 (720p tier) | none |
+| `longcat_3_fast_640_batch_folder` | Fast test, every voiceover in the folder | 640 × 640 | `_fast` |
+| `longcat_4_high_quality_960_batch_folder` | Final videos, every voiceover in the folder | 960 × 960 | none |
+| `longcat_5_experimental_return_to_portrait_640` | **Experimental**: portrait on each window's last frame | 640 × 640 | `_return_to_portrait` |
+| `longcat_6_experimental_start_to_end_image_640` | **Experimental**: final chunk pulled to an End Image | 640 × 640 | `_start_to_end` |
+
+Workflows 1 to 4 use the identity anchor (upstream default).
 
 The `anchor` setting lives on the **Split** node, so any workflow can switch mode; use a
 new `name_suffix` when you do. Canvas sizes are multiples of 16. LongCat's tiers are
@@ -254,7 +262,7 @@ These are estimates from the model size. **They haven't been measured on a pod y
 |---|---|
 | 80–96 GB (H100 / A100 80 GB / RTX PRO 6000) | The bundled settings: bf16 model, no block swap |
 | 48 GB (A6000 / L40S) | Enable **Block Swap** (select it, Ctrl+B; 20 of 48 blocks) and/or set the model loader's `quantization` to `fp8_e4m3fn`; turn on VAE tiling if decode runs out of memory |
-| 24 GB | Draft canvas, fp8, block swap 40+; slow |
+| 24 GB | Fast (640) workflows, fp8, block swap 40+; slow |
 
 The model must stay at **bf16 base precision** (a wrapper requirement for LongCat).
 Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not).

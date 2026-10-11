@@ -133,12 +133,12 @@ HF_TOKEN=
 #     https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/HuMo/whisper_large_v3_encoder_fp16.safetensors
 
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
-#   longcat_avatar_talking_head_draft         640, quick test
-#   longcat_avatar_talking_head               960
-#   longcat_avatar_talking_head_draft_batch   every voiceover in ComfyUI/input/batch_audio/
-#   longcat_avatar_talking_head_batch         same, at 960
-#   longcat_avatar_return_to_portrait         experimental
-#   longcat_avatar_start_to_end               experimental
+#   longcat_1_fast_640                                 fast test, one voiceover
+#   longcat_2_high_quality_960                         final video, one voiceover
+#   longcat_3_fast_640_batch_folder                    fast, every voiceover in ComfyUI/input/batch_audio/
+#   longcat_4_high_quality_960_batch_folder            final, every voiceover in that folder
+#   longcat_5_experimental_return_to_portrait_640      experimental
+#   longcat_6_experimental_start_to_end_image_640      experimental
 
 # Install locations (all on the Network Volume)
 #   /workspace/runpod-slim/ComfyUI/                ComfyUI, custom nodes, models
@@ -151,7 +151,7 @@ HF_TOKEN=
 # ------------------------------------------------------------------------------
 # 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): bundled settings, no block swap.
 # 48 GB (A6000, L40S): enable the Block Swap node and/or fp8_e4m3fn quantization.
-# 24 GB: draft canvas, fp8, block swap 40+; slow.
+# 24 GB: Fast (640) workflows, fp8, block swap 40+; slow.
 # These are estimates from the model size, not yet benchmarked on a live pod.
 
 

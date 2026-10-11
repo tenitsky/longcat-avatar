@@ -20,7 +20,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 ## Generate a video
 
 1. Open ComfyUI's Workflows sidebar.
-2. Select **longcat_avatar_talking_head_draft** (640, quick test) or **longcat_avatar_talking_head** (960).
+2. Select **longcat_1_fast_640** to test, then **longcat_2_high_quality_960** for the final video.
 3. Load your portrait and voiceover.
 4. **Prompt** is optional: leave it empty, or describe the portrait in a sentence.
 5. Test one chunk at batch count 1.
@@ -28,9 +28,9 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 
 The final video lands in ComfyUI/output. Next video: load its voiceover and queue. To resume, queue again.
 
-**Batch:** the **_batch** workflows render every voiceover in ComfyUI/input/batch_audio/.
+**Batch folder:** workflows **3** (fast) and **4** (high quality) render every voiceover in ComfyUI/input/batch_audio/, one video each.
 
-**Experimental:** LongCat has no end-frame input. **return_to_portrait** pulls each chunk back toward the portrait; **start_to_end** steers the final frames toward a second image.
+**Experimental:** LongCat has no end-frame input. Workflow **5** (return to portrait) pulls each chunk back toward the portrait; workflow **6** (start to end image) steers the final frames toward a second image.
 
 ## Hardware
 

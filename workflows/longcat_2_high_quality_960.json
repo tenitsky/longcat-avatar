@@ -1,8 +1,8 @@
 {
- "id": "2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264",
+ "id": "7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17",
  "revision": 0,
  "last_node_id": 70,
- "last_link_id": 44,
+ "last_link_id": 42,
  "nodes": [
   {
    "id": 1,
@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar Talking Head - Batch\n\n960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Audio From Folder** - put your voiceovers in `ComfyUI/input/batch_audio/` (.wav, .mp3, .flac, .m4a, .aac, .ogg, .opus). Each file becomes its own video, in name order. Upload them with Jupyter (port 8888) or FileBrowser.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk of the first file. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a large batch count: roughly the **total seconds of all files / 3.2**, plus a margin. Each run renders the next unfinished chunk of the next unfinished file. When every file is done the queue is cleared, so extra runs cost nothing.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Add files later:** drop them in the folder and run again; finished videos are skipped. The same portrait and prompt are used for every file.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - High Quality (960)\n\nFinal quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -61,7 +61,7 @@
    "type": "MarkdownNote",
    "pos": [
     660,
-    1230
+    1370
    ],
    "size": [
     520,
@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Draft workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -233,7 +233,7 @@
    },
    "title": "About stage 7",
    "widgets_values": [
-    "## 7. Save + stitch\n\nEach chunk is saved to `output/longcat_longform/<name>/chunk_0000.mp4`, ... as it finishes, so you can check one early.\n\nEach file's video is saved as `output/<file name><suffix>.mp4`, stitched with your **original** audio track.\n\n**Resume:** run again; finished chunks are skipped. **Redo from a chunk:** delete that chunk's file **and every later one**, then run; each chunk continues from the one before it. **Render a finished video again:** change `name_suffix`, or delete its folder under `output/longcat_longform/`."
+    "## 7. Save + stitch\n\nEach chunk is saved to `output/longcat_longform/<name>/chunk_0000.mp4`, ... as it finishes, so you can check one early.\n\nThe final video is saved as `output/<audio name><suffix>.mp4`, stitched with your **original** audio track.\n\n**Resume:** run again; finished chunks are skipped. **Redo from a chunk:** delete that chunk's file **and every later one**, then run; each chunk continues from the one before it. **Render a finished video again:** change `name_suffix`, or delete its folder under `output/longcat_longform/`."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -283,14 +283,14 @@
   },
   {
    "id": 11,
-   "type": "LongCatLongformAudioFolder",
+   "type": "LoadAudio",
    "pos": [
     690,
     670
    ],
    "size": [
     460,
-    190
+    150
    ],
    "flags": {},
    "order": 10,
@@ -298,22 +298,50 @@
    "inputs": [],
    "outputs": [
     {
-     "localized_name": "audio",
-     "name": "audio",
+     "localized_name": "AUDIO",
+     "name": "AUDIO",
      "type": "AUDIO",
      "links": [
       1,
       2
      ]
-    },
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadAudio",
+    "cnr_id": "comfy-core"
+   },
+   "title": "Load Voiceover",
+   "widgets_values": [
+    "voiceover.mp3",
+    null,
+    null
+   ],
+   "color": "#322",
+   "bgcolor": "#533"
+  },
+  {
+   "id": 21,
+   "type": "LongCatLongformAudioName",
+   "pos": [
+    690,
+    870
+   ],
+   "size": [
+    460,
+    130
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
     {
      "localized_name": "name",
      "name": "name",
      "type": "STRING",
      "links": [
-      41,
-      42,
-      43
+      41
      ]
     },
     {
@@ -321,48 +349,34 @@
      "name": "filename",
      "type": "STRING",
      "links": [
-      44
+      42
      ]
-    },
-    {
-     "localized_name": "file_number",
-     "name": "file_number",
-     "type": "INT",
-     "links": []
-    },
-    {
-     "localized_name": "total_files",
-     "name": "total_files",
-     "type": "INT",
-     "links": []
     }
    ],
    "properties": {
-    "Node name for S&R": "LongCatLongformAudioFolder",
+    "Node name for S&R": "LongCatLongformAudioName",
     "cnr_id": "comfyui-longcat-longform"
    },
-   "title": "Audio From Folder (one video per file)",
+   "title": "Output name (audio filename + name_suffix)",
    "widgets_values": [
-    "batch_audio",
+    ".mp4",
     "",
-    true
-   ],
-   "color": "#322",
-   "bgcolor": "#533"
+    ""
+   ]
   },
   {
    "id": 13,
    "type": "PrimitiveInt",
    "pos": [
     690,
-    910
+    1050
    ],
    "size": [
     460,
     90
    ],
    "flags": {},
-   "order": 11,
+   "order": 12,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -390,14 +404,14 @@
    "type": "PrimitiveInt",
    "pos": [
     690,
-    1050
+    1190
    ],
    "size": [
     460,
     90
    ],
    "flags": {},
-   "order": 12,
+   "order": 13,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -432,7 +446,7 @@
     200
    ],
    "flags": {},
-   "order": 13,
+   "order": 14,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -466,7 +480,7 @@
     300
    ],
    "flags": {},
-   "order": 14,
+   "order": 15,
    "mode": 0,
    "inputs": [
     {
@@ -544,7 +558,7 @@
     400
    ],
    "flags": {},
-   "order": 15,
+   "order": 16,
    "mode": 0,
    "inputs": [
     {
@@ -552,13 +566,6 @@
      "name": "audio",
      "type": "AUDIO",
      "link": 1
-    },
-    {
-     "localized_name": "session",
-     "name": "session",
-     "type": "STRING",
-     "link": 41,
-     "shape": 7
     }
    ],
    "outputs": [
@@ -689,7 +696,7 @@
     250
    ],
    "flags": {},
-   "order": 16,
+   "order": 17,
    "mode": 4,
    "inputs": [],
    "outputs": [
@@ -731,7 +738,7 @@
     170
    ],
    "flags": {},
-   "order": 17,
+   "order": 18,
    "mode": 0,
    "inputs": [
     {
@@ -792,7 +799,7 @@
     330
    ],
    "flags": {},
-   "order": 18,
+   "order": 19,
    "mode": 0,
    "inputs": [
     {
@@ -897,7 +904,7 @@
     170
    ],
    "flags": {},
-   "order": 19,
+   "order": 20,
    "mode": 0,
    "inputs": [
     {
@@ -953,7 +960,7 @@
     130
    ],
    "flags": {},
-   "order": 20,
+   "order": 21,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -998,7 +1005,7 @@
     90
    ],
    "flags": {},
-   "order": 21,
+   "order": 22,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -1032,7 +1039,7 @@
     220
    ],
    "flags": {},
-   "order": 22,
+   "order": 23,
    "mode": 0,
    "inputs": [
     {
@@ -1081,7 +1088,7 @@
     170
    ],
    "flags": {},
-   "order": 23,
+   "order": 24,
    "mode": 0,
    "inputs": [
     {
@@ -1144,7 +1151,7 @@
     250
    ],
    "flags": {},
-   "order": 24,
+   "order": 25,
    "mode": 0,
    "inputs": [
     {
@@ -1207,7 +1214,7 @@
     190
    ],
    "flags": {},
-   "order": 25,
+   "order": 26,
    "mode": 0,
    "inputs": [
     {
@@ -1227,13 +1234,6 @@
      "name": "end_latent",
      "type": "LATENT",
      "link": null,
-     "shape": 7
-    },
-    {
-     "localized_name": "session",
-     "name": "session",
-     "type": "STRING",
-     "link": 42,
      "shape": 7
     },
     {
@@ -1295,7 +1295,7 @@
     300
    ],
    "flags": {},
-   "order": 26,
+   "order": 27,
    "mode": 0,
    "inputs": [
     {
@@ -1398,7 +1398,7 @@
     330
    ],
    "flags": {},
-   "order": 27,
+   "order": 28,
    "mode": 0,
    "inputs": [
     {
@@ -1531,7 +1531,7 @@
     250
    ],
    "flags": {},
-   "order": 28,
+   "order": 29,
    "mode": 0,
    "inputs": [
     {
@@ -1617,7 +1617,7 @@
     250
    ],
    "flags": {},
-   "order": 29,
+   "order": 30,
    "mode": 0,
    "inputs": [
     {
@@ -1671,7 +1671,7 @@
     340
    ],
    "flags": {},
-   "order": 30,
+   "order": 31,
    "mode": 0,
    "inputs": [
     {
@@ -1724,7 +1724,7 @@
      "localized_name": "session",
      "name": "session",
      "type": "STRING",
-     "link": 43,
+     "link": 41,
      "widget": {
       "name": "session"
      }
@@ -1733,7 +1733,7 @@
      "localized_name": "filename",
      "name": "filename",
      "type": "STRING",
-     "link": 44,
+     "link": 42,
      "widget": {
       "name": "filename"
      }
@@ -1766,9 +1766,9 @@
     0,
     1,
     93,
-    "batch",
-    "batch.mp4",
-    false,
+    "run1",
+    "longcat_avatar.mp4",
+    true,
     0
    ]
   }
@@ -1883,7 +1883,7 @@
    20,
    12,
    53,
-   4,
+   3,
    "INT"
   ],
   [
@@ -1891,7 +1891,7 @@
    20,
    11,
    53,
-   5,
+   4,
    "BOOLEAN"
   ],
   [
@@ -2096,32 +2096,16 @@
   ],
   [
    41,
-   11,
-   1,
-   20,
-   1,
-   "STRING"
-  ],
-  [
-   42,
-   11,
-   1,
-   53,
-   3,
-   "STRING"
-  ],
-  [
-   43,
-   11,
-   1,
+   21,
+   0,
    70,
    6,
    "STRING"
   ],
   [
-   44,
-   11,
-   2,
+   42,
+   21,
+   1,
    70,
    7,
    "STRING"
@@ -2135,7 +2119,7 @@
     660,
     0,
     520,
-    1170
+    1310
    ],
    "color": "#a1309b",
    "font_size": 26,

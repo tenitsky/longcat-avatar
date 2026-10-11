@@ -223,11 +223,11 @@ class SplitTests(unittest.TestCase):
                         "_meta": {"title": "Voiceover"}}
         prompt["12"] = {"class_type": "LongCatLongformAudioName",
                         "inputs": {"suffix": ".mp4", "source_title": "Voiceover",
-                                   "name_suffix": "_draft"}}
+                                   "name_suffix": "_fast"}}
         with contextlib.redirect_stdout(io.StringIO()):
             name, filename = lc.LongCatLongformAudioName().derive(
-                ".mp4", "Voiceover", prompt, name_suffix="_draft")
-        self.assertEqual((name, filename), ("selected_draft", "selected_draft.mp4"))
+                ".mp4", "Voiceover", prompt, name_suffix="_fast")
+        self.assertEqual((name, filename), ("selected_fast", "selected_fast.mp4"))
         self.assertEqual(lc._session_from_prompt(prompt), name)
 
     def test_prompt(self):
@@ -381,7 +381,7 @@ class RenderTests(unittest.TestCase):
         rendered = []
         with contextlib.redirect_stdout(io.StringIO()):
             while True:
-                picked = source.next_file("batch_audio", "_draft", True)
+                picked = source.next_file("batch_audio", "_fast", True)
                 if isinstance(picked[0], ExecutionBlocker):
                     break
                 audio, session, filename, number, count = picked
@@ -390,16 +390,16 @@ class RenderTests(unittest.TestCase):
                 rendered.append((session, r[0]))
                 self.assertLess(len(rendered), 20, "batch never finished")
         sessions = list(dict.fromkeys(s for s, _ in rendered))
-        self.assertEqual(sessions, ["talk 1_draft", "talk 2_draft", "talk 10_draft"])
+        self.assertEqual(sessions, ["talk 1_fast", "talk 2_fast", "talk 10_fast"])
         for session in sessions:
             chunks = [i for s, i in rendered if s == session]
             self.assertEqual(chunks, list(range(len(chunks))))
             self.assertTrue((Path(self.tmp.name) / f"{session}.mp4").exists())
-        self.assertGreater(len([1 for s, _ in rendered if s == "talk 2_draft"]), 1)
+        self.assertGreater(len([1 for s, _ in rendered if s == "talk 2_fast"]), 1)
         self.assertFalse((Path(self.tmp.name) / lc.SESSION_ROOT / "wrong-session").exists())
         shutil.copy(folder / "talk 1.flac", folder / "talk 1.wav")
         with self.assertRaisesRegex(RuntimeError, "different names"):
-            source.next_file("batch_audio", "_draft", True)
+            source.next_file("batch_audio", "_fast", True)
 
     def test_batch_folder_refuses_a_file_cut_short_in_transfer(self):
         folder = Path(self.tmp.name) / "input" / "batch_audio"
