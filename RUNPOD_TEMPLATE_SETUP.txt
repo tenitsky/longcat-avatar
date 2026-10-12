@@ -136,8 +136,8 @@ HF_TOKEN=
 #     (a few minutes; log line "FP8 model ready").
 
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
-# 12 in total: each one below as longcat_bf16_<name> (full-precision model) and
-# longcat_fp8_<name> (FP8 model, half the VRAM for the weights).
+# 12 in total: each one below as longcat_bf16_<name> (full-precision model, Block Swap
+# off) and longcat_fp8_<name> (FP8 model, half the VRAM, Block Swap on at 20 blocks).
 #   1_fast_640                                 fast test, one voiceover
 #   2_high_quality_960                         final video, one voiceover
 #   3_fast_640_batch_folder                    fast, every voiceover in ComfyUI/input/batch_audio/
@@ -154,9 +154,10 @@ HF_TOKEN=
 # ------------------------------------------------------------------------------
 # 9. GPU
 # ------------------------------------------------------------------------------
-# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): BF16 or FP8 workflows, no block swap.
-# 48 GB (A6000, L40S): FP8 workflows, Block Swap if needed.
-# 32 GB (RTX 5090): FP8 workflows + Block Swap 20+, start at 640, pod with 64 GB+ RAM.
+# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): BF16 workflows (Block Swap off).
+# 48 GB (A6000, L40S): FP8 workflows as shipped (Block Swap on, 20 blocks).
+# 32 GB (RTX 5090): FP8 workflows; raise blocks_to_swap if 960 runs out; start at 640;
+#   pick a pod with 64 GB+ system RAM (swapped blocks live there).
 # 24 GB: FP8 Fast (640) workflows, block swap 40+; slow.
 # These are estimates from the model size, not yet benchmarked on a live pod.
 

@@ -93,6 +93,16 @@ class WorkflowTests(unittest.TestCase):
                 path = ROOT / "workflows" / w["path"]
                 self.assertEqual(json.loads(path.read_text(encoding="utf-8")), wf)
 
+    def test_current_workflows_are_not_in_setups_cleanup_list(self):
+        # setup.sh deletes files matching these hashes; a current workflow must never
+        # match, or it would be deleted and reinstalled on every boot.
+        import hashlib
+        retired = set(re.findall(r"^([0-9a-f]{64}) \S+\.json$", SETUP, re.M))
+        self.assertGreater(len(retired), 0)
+        for w, wf, _ in self.each():
+            text = json.dumps(wf, indent=1, ensure_ascii=False) + "\n"  # as on the pod
+            self.assertNotIn(hashlib.sha256(text.encode()).hexdigest(), retired, w["path"])
+
     def test_wanvideo_nodes_match_pinned_schema(self):
         for w, wf, nodes in self.each():
             for node in nodes.values():
@@ -210,7 +220,10 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(nodes[60]["widgets_values"][0], 1.0)
                 self.assertEqual(nodes[55]["widgets_values"][0], False)  # Split normalises
                 self.assertEqual(nodes[55]["widgets_values"][2:5], [25.0, 1.0, 1.0])
-                self.assertEqual(nodes[42]["mode"], builder.BYPASS)
+                # Block Swap: on for FP8 (smaller GPUs), bypassed for BF16 (80 GB GPUs).
+                self.assertEqual(nodes[42]["mode"],
+                                 0 if w["precision"] == "fp8" else builder.BYPASS)
+                self.assertEqual(nodes[42]["widgets_values"][0], 20)
                 suffix = (nodes[11]["widgets_values"][1] if w["batch"]
                           else nodes[21]["widgets_values"][2])
                 self.assertEqual(suffix, v["suffix"])

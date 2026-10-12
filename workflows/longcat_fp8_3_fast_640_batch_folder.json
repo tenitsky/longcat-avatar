@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar - FP8 - Fast (640) - Batch Folder (one video per voiceover)\n\nFast preview at 640 x 640 (LongCat's 480p tier): under half the pixels of High Quality. Check timing, lip sync and framing here, then render the final with High Quality (960).\n\n**FP8 model** (~17 GB), made from the BF16 file at setup: about half the VRAM for the model weights, at a small cost in precision. Compare with the BF16 version of this workflow.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Audio From Folder** - put your voiceovers in `ComfyUI/input/batch_audio/` (.wav, .mp3, .flac, .m4a, .aac, .ogg, .opus). Each file becomes its own video, in name order. Upload them with Jupyter (port 8888) or FileBrowser.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk of the first file. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a large batch count: roughly the **total seconds of all files / 3.2**, plus a margin. Each run renders the next unfinished chunk of the next unfinished file. When every file is done the queue is cleared, so extra runs cost nothing.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Add files later:** drop them in the folder and run again; finished videos are skipped. The same portrait and prompt are used for every file.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - FP8 - Fast (640) - Batch Folder (one video per voiceover)\n\nFast preview at 640 x 640 (LongCat's 480p tier): under half the pixels of High Quality. Check timing, lip sync and framing here, then render the final with High Quality (960).\n\n**FP8 model** (~17 GB), made from the BF16 file at setup: about half the VRAM for the model weights, at a small cost in precision. **Block Swap is on** (20 of 48 blocks) for 32-48 GB GPUs. Compare with the BF16 version of this workflow.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Audio From Folder** - put your voiceovers in `ComfyUI/input/batch_audio/` (.wav, .mp3, .flac, .m4a, .aac, .ogg, .opus). Each file becomes its own video, in name order. Upload them with Jupyter (port 8888) or FileBrowser.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk of the first file. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a large batch count: roughly the **total seconds of all files / 3.2**, plus a margin. Each run renders the next unfinished chunk of the next unfinished file. When every file is done the queue is cleared, so extra runs cost nothing.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Add files later:** drop them in the folder and run again; finished videos are skipped. The same portrait and prompt are used for every file.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -155,7 +155,7 @@
    },
    "title": "About stage 4",
    "widgets_values": [
-    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, FP8** (`LongCat-Avatar-15_fp8_e4m3fn.safetensors`, ~17 GB). Setup builds it once from the BF16 download: the large weights are stored as float8_e4m3fn, everything else stays bf16, exactly as the loader's `fp8_e4m3fn` option would convert the BF16 file. Computation still runs at bf16 base precision, which LongCat requires.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 48 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks; raise it if you still run out). Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
+    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, FP8** (`LongCat-Avatar-15_fp8_e4m3fn.safetensors`, ~17 GB). Setup builds it once from the BF16 download: the large weights are stored as float8_e4m3fn, everything else stays bf16, exactly as the loader's `fp8_e4m3fn` option would convert the BF16 file. Computation still runs at bf16 base precision, which LongCat requires.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Block Swap is on** (20 of 48 blocks): part of the model waits in system RAM and moves to the GPU as each block runs, which fits 32-48 GB GPUs. Still out of memory? Raise `blocks_to_swap`. On an 80 GB+ GPU, select it and press Ctrl+B to bypass it for a little more speed. Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -690,7 +690,7 @@
    ],
    "flags": {},
    "order": 16,
-   "mode": 4,
+   "mode": 0,
    "inputs": [],
    "outputs": [
     {
@@ -708,7 +708,7 @@
     "aux_id": "kijai/ComfyUI-WanVideoWrapper",
     "ver": "088128b224242e110d3906c6750e9a3a348a659b"
    },
-   "title": "Block Swap - Ctrl+B to enable below 80 GB VRAM",
+   "title": "Block Swap - ON (20 of 48 blocks); Ctrl+B to bypass on 80 GB+",
    "widgets_values": [
     20,
     false,

@@ -87,18 +87,21 @@ VARIANTS = {
         canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, tag="_start_to_end"),
 }
 
+# BF16 targets 80 GB GPUs, so Block Swap starts bypassed. FP8 targets smaller GPUs, so
+# it starts on at 20 of 48 blocks.
 PRECISIONS = {
     "bf16": dict(
-        label="BF16", model=MODEL, quantization="disabled",
+        label="BF16", model=MODEL, quantization="disabled", block_swap=False,
         loader_title="LongCat-Avatar 1.5 (bf16, full precision)",
         summary="**BF16 model** (31.7 GB): full precision, the reference quality. Needs "
                 "an 80 GB GPU, or Block Swap below that."),
     "fp8": dict(
-        label="FP8", model=MODEL_FP8, quantization="fp8_e4m3fn",
+        label="FP8", model=MODEL_FP8, quantization="fp8_e4m3fn", block_swap=True,
         loader_title="LongCat-Avatar 1.5 (fp8 e4m3fn)",
         summary="**FP8 model** (~17 GB), made from the BF16 file at setup: about half the "
-                "VRAM for the model weights, at a small cost in precision. Compare with "
-                "the BF16 version of this workflow."),
+                "VRAM for the model weights, at a small cost in precision. **Block Swap "
+                "is on** (20 of 48 blocks) for 32-48 GB GPUs. Compare with the BF16 "
+                "version of this workflow."),
 }
 
 # Numbered so the Workflows sidebar lists them in the order to use them: a fast test,
@@ -130,6 +133,7 @@ def settings(variant, precision):
     v, p = VARIANTS[variant], PRECISIONS[precision]
     return {**v, "precision": precision, "model": p["model"],
             "quantization": p["quantization"], "loader_title": p["loader_title"],
+            "block_swap": p["block_swap"],
             "title": f"LongCat Avatar - {p['label']} - {v['title']}",
             "summary": f"{v['summary']}\n\n{p['summary']}",
             "suffix": f"_{precision}_{v['canvas']}{v['tag']}"}
@@ -205,8 +209,10 @@ def note_models(v):
                  "float8_e4m3fn, everything else stays bf16, exactly as the loader's "
                  "`fp8_e4m3fn` option would convert the BF16 file. Computation still runs "
                  "at bf16 base precision, which LongCat requires.")
-        low_vram = ("**Less than 48 GB of VRAM?** Select **Block Swap** and press Ctrl+B "
-                    "to enable it (20 of 48 blocks; raise it if you still run out).")
+        low_vram = ("**Block Swap is on** (20 of 48 blocks): part of the model waits in "
+                    "system RAM and moves to the GPU as each block runs, which fits 32-48 GB "
+                    "GPUs. Still out of memory? Raise `blocks_to_swap`. On an 80 GB+ GPU, "
+                    "select it and press Ctrl+B to bypass it for a little more speed.")
     else:
         model = ("- **LongCat-Avatar 1.5, BF16** (`" + MODEL + "`, 31.7 GB): full "
                  "precision. LongCat only runs at bf16 base precision.")
@@ -482,8 +488,9 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     # ---------------------------------------------------------------- 4. models
     g.node(42, "WanVideoBlockSwap", outputs=[("block_swap_args", "BLOCKSWAPARGS")],
            widgets=[20, False, False, False, 0, 1, False],
-           title="Block Swap - Ctrl+B to enable below 80 GB VRAM", cnr=WV,
-           mode=BYPASS, size=size(250))
+           title=("Block Swap - ON (20 of 48 blocks); Ctrl+B to bypass on 80 GB+"
+                  if v["block_swap"] else "Block Swap - Ctrl+B to enable below 80 GB VRAM"),
+           cnr=WV, mode=0 if v["block_swap"] else BYPASS, size=size(250))
     g.node(41, "WanVideoLoraSelect",
            inputs=[("prev_lora", "WANVIDLORA", I, True),
                    ("blocks", "SELECTEDBLOCKS", I, True)],

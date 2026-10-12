@@ -210,14 +210,16 @@ output-name node, or delete its folder under `output/longcat_longform/`.
 > `setup.sh` skips existing workflows, so a workflow you edited on the pod is never
 > overwritten on reboot. The flip side is that an updated workflow in this repo won't
 > reach an existing volume until you delete the old file from
-> `ComfyUI/user/default/workflows/` and restart. Workflows shipped under earlier names
-> (`longcat_avatar_*`, `longcat_1_*` to `longcat_6_*`) are removed at boot unless you
-> edited them.
+> `ComfyUI/user/default/workflows/` and restart. Exception: a file still identical to a
+> version this repo shipped earlier (an old name, or an older version of a current one)
+> is removed at boot and the current version installed; edited copies are kept.
 
 ### Workflows
 
-Every workflow comes twice: **`longcat_bf16_*`** loads the full-precision BF16 model,
-**`longcat_fp8_*`** the FP8 model. The graphs are otherwise identical. The number gives
+Every workflow comes twice: **`longcat_bf16_*`** loads the full-precision BF16 model
+with **Block Swap off** (for 80 GB GPUs); **`longcat_fp8_*`** loads the FP8 model with
+**Block Swap on**, 20 of 48 blocks (for 32-48 GB GPUs). The graphs are otherwise
+identical. The number gives
 the order to use them in. **Fast** is for testing timing, lip sync and framing; **High
 Quality** is the final render. **Batch folder** renders every voiceover in
 `ComfyUI/input/batch_audio/`, one video each; the others take one voiceover.
@@ -285,10 +287,10 @@ These are estimates from the model size. **They haven't been measured on a pod y
 
 | GPU | Notes |
 |---|---|
-| 80–96 GB (H100 / A100 80 GB / RTX PRO 6000) | BF16 or FP8 workflows as shipped, no block swap |
-| 48 GB (A6000 / L40S) | **FP8** workflows; add **Block Swap** (select it, Ctrl+B; 20 of 48 blocks) if needed, and VAE tiling if decode runs out of memory |
-| 32 GB (RTX 5090) | **FP8** workflows with Block Swap 20+; start at 640; a pod with 64 GB+ of RAM |
-| 24 GB | **FP8** Fast (640) workflows, block swap 40+; slow |
+| 80–96 GB (H100 / A100 80 GB / RTX PRO 6000) | **BF16** workflows as shipped (Block Swap off). FP8 works too; bypass its Block Swap (select it, Ctrl+B) for a little more speed |
+| 48 GB (A6000 / L40S) | **FP8** workflows as shipped (Block Swap on, 20 blocks); VAE tiling if decode runs out of memory |
+| 32 GB (RTX 5090) | **FP8** workflows as shipped; raise `blocks_to_swap` if 960 runs out of memory; start at 640; a pod with 64 GB+ of RAM |
+| 24 GB | **FP8** Fast (640) workflows, `blocks_to_swap` 40+; slow |
 
 The model must stay at **bf16 base precision** (a wrapper requirement for LongCat).
 Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not).

@@ -401,8 +401,9 @@ fi
 echo "Installing workflows..."
 WF_DEST="$COMFYUI_PATH/user/default/workflows"
 mkdir -p "$WF_DEST"
-# Workflows shipped under earlier names. Each is removed only while it is
-# byte-identical to a version this repo shipped, so a copy edited on the pod is kept.
+# Workflows shipped under earlier names, and earlier versions of current ones. Each is
+# removed only while it is byte-identical to that shipped version, so a copy edited on
+# the pod is kept; a current name is then reinstalled at its new version below.
 RETIRED_WORKFLOWS="
 af1846410b415b004f083d3f6357450912f595db2c59f2df0343785aa4c08439 longcat_avatar_talking_head.json
 3ec6605898ab35b1ca217a12804d5450bd15c315d54cf68a5d74f15abe5c7910 longcat_avatar_talking_head.json
@@ -422,12 +423,18 @@ f093027b65345532336bad2f06daa73f9886775c14e9f0b449a0baf49589dfd3 longcat_1_fast_
 f58132330afb070245fb7b3f196fcd9639173496d40ba167c58c6149cb5b7dea longcat_4_high_quality_960_batch_folder.json
 2af3f020d2886adaac0015430e969856d3f5dbbfe73adcbfe1d92ad778e0676b longcat_5_experimental_return_to_portrait_640.json
 508bcb426816fe539712fb7a4a24bba6175fdc7aa3e217b74e6a46fcbfa7c782 longcat_6_experimental_start_to_end_image_640.json
+d35d03a50b47cfa1448454fb8d61980eb5ef45b217eeb10be985f12a5478f5bc longcat_fp8_1_fast_640.json
+c60666572973ccd8173cd78fcd1691d82eedd74b81b159118917dcedda11d32c longcat_fp8_2_high_quality_960.json
+c5c7bd45f0d49ba866a5c2a5cd01c25ac7c6a6155004e95fa67c7e1657c656d6 longcat_fp8_3_fast_640_batch_folder.json
+17ea1343f0fbec6e43e1bc4f0649283537d77e6b5f20e7a6d05d6099e410fda7 longcat_fp8_4_high_quality_960_batch_folder.json
+d705d1e3e407a02ac8f57a027a8c2a86fc6b15a12a386679d4b65b81bdc0be60 longcat_fp8_5_experimental_return_to_portrait_640.json
+80019aaf2240599dfa4ede2459d8f408498d143b5dcc3507200412b12e2f94b6 longcat_fp8_6_experimental_start_to_end_image_640.json
 "
 while read -r sum name; do
   [ -n "$name" ] && [ -f "$WF_DEST/$name" ] || continue
   if [ "$(sha256sum "$WF_DEST/$name" | cut -d' ' -f1)" = "$sum" ]; then
     rm -f "$WF_DEST/$name"
-    echo "  removed renamed workflow: $name"
+    echo "  removed outdated workflow: $name"
   fi
 done <<< "$RETIRED_WORKFLOWS"
 if [ -d "$SCRIPT_DIR/workflows" ]; then
