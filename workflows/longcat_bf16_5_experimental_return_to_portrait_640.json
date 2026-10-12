@@ -275,7 +275,7 @@
    },
    "title": "Load Portrait (first frame + identity)",
    "widgets_values": [
-    "portrait.png",
+    "sample_portrait.png",
     "image"
    ],
    "color": "#322",
@@ -313,7 +313,7 @@
    },
    "title": "Load Voiceover",
    "widgets_values": [
-    "voiceover.mp3",
+    "sample_voiceover.mp3",
     null,
     null
    ],

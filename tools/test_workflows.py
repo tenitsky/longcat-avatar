@@ -93,6 +93,11 @@ class WorkflowTests(unittest.TestCase):
                 path = ROOT / "workflows" / w["path"]
                 self.assertEqual(json.loads(path.read_text(encoding="utf-8")), wf)
 
+    def test_samples_ship_with_the_repo(self):
+        shipped = {p.name for p in (ROOT / "samples").iterdir()}
+        self.assertEqual(shipped, {builder.SAMPLE_PORTRAIT, builder.SAMPLE_VOICEOVER})
+        self.assertIn('"$SCRIPT_DIR/samples/"*', SETUP)
+
     def test_current_workflows_are_not_in_setups_cleanup_list(self):
         # setup.sh deletes files matching these hashes; a current workflow must never
         # match, or it would be deleted and reinstalled on every boot.
@@ -228,6 +233,12 @@ class WorkflowTests(unittest.TestCase):
                           else nodes[21]["widgets_values"][2])
                 self.assertEqual(suffix, v["suffix"])
                 self.assertEqual(len(by_type["LoadImage"]), 2 if v["end_image"] else 1)
+                # Every workflow opens on the shipped samples.
+                for image in by_type["LoadImage"]:
+                    self.assertEqual(image["widgets_values"][0], builder.SAMPLE_PORTRAIT)
+                for audio in by_type.get("LoadAudio", []):
+                    self.assertEqual(audio["widgets_values"][0], builder.SAMPLE_VOICEOVER)
+                self.assertEqual(len(by_type.get("LoadAudio", [])), 0 if w["batch"] else 1)
         suffixes = [builder.settings(v, p)["suffix"]
                     for v in builder.VARIANTS for p in builder.PRECISIONS]
         self.assertEqual(len(set(suffixes)), len(suffixes), "sessions must not collide")

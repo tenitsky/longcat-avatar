@@ -62,7 +62,9 @@ On first pod boot, `setup.sh`:
 5. Downloads the five model files (skip-if-exists, resumable)
 6. Builds the **FP8 model** from the BF16 download (`tools/make_fp8.py`, once, a few
    minutes)
-7. Installs the twelve workflows (BF16 and FP8) into ComfyUI's **Workflows** sidebar
+7. Copies the sample portrait and voiceover into `ComfyUI/input/` (never over a file
+   of the same name) and installs the twelve workflows (BF16 and FP8) into ComfyUI's
+   **Workflows** sidebar
 8. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
 
 On later boots every step finds its work done and is skipped, including the package
@@ -187,8 +189,9 @@ For the first launch, check the logs for **`Network Volume workspace ready at
    **`longcat_bf16_1_fast_640`** (or **`longcat_fp8_1_fast_640`**) for a first test.
    Render the final video with **`longcat_bf16_2_high_quality_960`** (or the `fp8`
    version).
-2. Set **Load Portrait** and **Load Voiceover**. The output is named after the audio
-   file automatically.
+2. Set **Load Portrait** and **Load Voiceover**. Every workflow opens on the bundled
+   samples (`sample_portrait.png`, `sample_voiceover.mp3`, 71 s), so the first run needs
+   no uploads. The output is named after the audio file automatically.
 3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
    the camera, small natural motion, static camera and background), or describe the
    portrait in a sentence, e.g. *A woman in a navy blazer, in front of a plain grey
@@ -348,6 +351,7 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 │   ├── test_boot.py                       # full setup with image/network fixtures (Linux)
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
+├── samples/                               # sample portrait + 71 s voiceover the workflows open on
 └── workflows/                             # the twelve workflows listed above
 ```
 

@@ -46,6 +46,10 @@ MODEL_FILES = [
     (WHISPER, "audio_encoders", "HuMo/" + WHISPER),
 ]
 MODEL_URL = {name: KJ + path for name, _, path in MODEL_FILES}
+# Shipped in samples/ and copied into ComfyUI/input/ at setup: every workflow opens on
+# them, so a first run needs no uploads.
+SAMPLE_PORTRAIT = "sample_portrait.png"
+SAMPLE_VOICEOVER = "sample_voiceover.mp3"
 # Built from MODEL by tools/make_fp8.py at setup, not downloaded.
 MODEL_FP8 = "LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 
@@ -435,11 +439,11 @@ def build(variant="high_quality", batch=False, precision="bf16"):
 
     # ---------------------------------------------------------------- 1. inputs
     g.node(10, "LoadImage", outputs=[("IMAGE", "IMAGE"), ("MASK", "MASK")],
-           widgets=["portrait.png", "image"],
+           widgets=[SAMPLE_PORTRAIT, "image"],
            title="Load Portrait (first frame + identity)", color=INPUT, size=size(500))
     if v["end_image"]:
         g.node(12, "LoadImage", outputs=[("IMAGE", "IMAGE"), ("MASK", "MASK")],
-               widgets=["end_image.png", "image"],
+               widgets=[SAMPLE_PORTRAIT, "image"],  # placeholder: same person, new pose
                title="Load End Image (same person, final pose)", color=INPUT,
                size=size(500))
     if batch:
@@ -451,7 +455,7 @@ def build(variant="high_quality", batch=False, precision="bf16"):
                size=size(190))
     else:
         g.node(11, "LoadAudio", outputs=[("AUDIO", "AUDIO")],
-               widgets=["voiceover.mp3", None, None],
+               widgets=[SAMPLE_VOICEOVER, None, None],
                title="Load Voiceover", color=INPUT, size=size(150))
         g.node(21, "LongCatLongformAudioName",
                outputs=[("name", "STRING"), ("filename", "STRING")],

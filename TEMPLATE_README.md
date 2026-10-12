@@ -21,7 +21,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 
 1. Open ComfyUI's Workflows sidebar.
 2. Select **longcat_bf16_1_fast_640** to test, then **longcat_bf16_2_high_quality_960** for the final video. On smaller GPUs use the **longcat_fp8_…** versions.
-3. Load your portrait and voiceover.
+3. Load your portrait and voiceover (a 71 s sample is preloaded).
 4. **Prompt** is optional: leave it empty, or describe the portrait in a sentence.
 5. Test one chunk at batch count 1.
 6. Queue roughly audio seconds divided by 3.2, plus a margin. Each item renders the next unfinished chunk, continuing from the one before.

@@ -135,6 +135,11 @@ HF_TOKEN=
 #     NOT downloaded: built from the bf16 file by tools/make_fp8.py on first boot
 #     (a few minutes; log line "FP8 model ready").
 
+# Samples (copied into ComfyUI/input/, never over an existing file): every workflow
+# opens on them, so the first run needs no uploads.
+#   sample_portrait.png      2048 x 2048 portrait
+#   sample_voiceover.mp3     71 s voiceover (about 22 chunks)
+
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
 # 12 in total: each one below as longcat_bf16_<name> (full-precision model, Block Swap
 # off) and longcat_fp8_<name> (FP8 model, half the VRAM, Block Swap on at 20 blocks).

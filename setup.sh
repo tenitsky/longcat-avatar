@@ -262,6 +262,11 @@ for d in diffusion_models loras text_encoders vae audio_encoders; do
 done
 # The batch workflows render every voiceover dropped in here, one video per file.
 mkdir -p "$COMFYUI_PATH/input/batch_audio"
+# Sample portrait and voiceover (71 s) the workflows open on. Never overwrites a file
+# of the same name already on the volume.
+for sample in "$SCRIPT_DIR/samples/"*; do
+  [ -e "$COMFYUI_PATH/input/$(basename "$sample")" ] || cp "$sample" "$COMFYUI_PATH/input/"
+done
 
 # -------------------------------------------------------------------
 # Download helpers
@@ -429,6 +434,18 @@ c5c7bd45f0d49ba866a5c2a5cd01c25ac7c6a6155004e95fa67c7e1657c656d6 longcat_fp8_3_f
 17ea1343f0fbec6e43e1bc4f0649283537d77e6b5f20e7a6d05d6099e410fda7 longcat_fp8_4_high_quality_960_batch_folder.json
 d705d1e3e407a02ac8f57a027a8c2a86fc6b15a12a386679d4b65b81bdc0be60 longcat_fp8_5_experimental_return_to_portrait_640.json
 80019aaf2240599dfa4ede2459d8f408498d143b5dcc3507200412b12e2f94b6 longcat_fp8_6_experimental_start_to_end_image_640.json
+442dc99717a09b46d099fba572e7d3fb0d4dd78d61e66de111b54942932214c6 longcat_bf16_1_fast_640.json
+e562844142cf39d6e67174b406b7ead2c4d7f6147dec55b07a45a16bfb54182a longcat_bf16_2_high_quality_960.json
+884612a98f5c442f1ddafcaf17becc0febd5c9a8bce1f0b5a6b9da775726daec longcat_bf16_3_fast_640_batch_folder.json
+2c35456285bd08d4366c37629edf5557de60b746038a4af4bee76ebad7edb459 longcat_bf16_4_high_quality_960_batch_folder.json
+3f4017923d4dbc788379d5e1817d41c63a45a92add68a8b6f7afdd6f9dda2c6c longcat_bf16_5_experimental_return_to_portrait_640.json
+c72c2c159ed11ea65831f6843693ba6b7c2172d57c7306f28c2042ee3de5550d longcat_bf16_6_experimental_start_to_end_image_640.json
+9b8dbf9c93974712c4cd8956c4aae22cd0036ed561c580bbd9e36340eb737a9d longcat_fp8_1_fast_640.json
+6dba865d8daccdc8457ada4bc0a3b8777d4588dbff6f499e15fc90fcb9c65dd4 longcat_fp8_2_high_quality_960.json
+b71c306a89f25e2f04160a007d83e4cff43bf811b928cb710b5b15e6a237e93d longcat_fp8_3_fast_640_batch_folder.json
+62952ebd65a2fe51f6d7ce29a013417e6a57ab4a8924fff98a1bdb3ecaf5155e longcat_fp8_4_high_quality_960_batch_folder.json
+41daddaabb1fbc7659d00cea3c43df9a53aa5345a807706832ce239a4f764612 longcat_fp8_5_experimental_return_to_portrait_640.json
+f03aa64170c25863ee6e1334c2d3655c3f647998248879dfe216f22d238e31d2 longcat_fp8_6_experimental_start_to_end_image_640.json
 "
 while read -r sum name; do
   [ -n "$name" ] && [ -f "$WF_DEST/$name" ] || continue

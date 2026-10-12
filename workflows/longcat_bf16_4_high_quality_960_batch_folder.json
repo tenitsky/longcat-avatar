@@ -275,7 +275,7 @@
    },
    "title": "Load Portrait (first frame + identity)",
    "widgets_values": [
-    "portrait.png",
+    "sample_portrait.png",
     "image"
    ],
    "color": "#322",

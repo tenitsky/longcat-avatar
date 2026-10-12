@@ -56,6 +56,7 @@ class BootTests(unittest.TestCase):
         # rewritten; no installation function or branch is replaced.
         shutil.copytree(ROOT / "custom_nodes", self.repo / "custom_nodes")
         shutil.copytree(ROOT / "workflows", self.repo / "workflows")
+        shutil.copytree(ROOT / "samples", self.repo / "samples")
         (self.repo / "tools").mkdir()
         shutil.copy(ROOT / "tools/make_fp8.py", self.repo / "tools/make_fp8.py")
         storage = self.repo / "custom_nodes/comfyui-longcat-longform/storage.py"
@@ -268,6 +269,10 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
             self.assertEqual(json.loads((sidebar / w["path"]).read_text()),
                              json.loads((ROOT / "workflows" / w["path"]).read_text()))
         self.assertTrue((self.comfy / "input/batch_audio").is_dir())
+        # The samples the workflows open on, copied into ComfyUI's input folder.
+        for sample in (ROOT / "samples").iterdir():
+            self.assertEqual((self.comfy / "input" / sample.name).read_bytes(),
+                             sample.read_bytes())
 
         state = json.loads(self.handoff.read_text())
         self.assertEqual(state["COMFYUI_PATH"], str(self.comfy))
@@ -283,6 +288,9 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         # An edited copy of a workflow shipped under an earlier name is not removed.
         retired = sidebar / "longcat_avatar_talking_head.json"
         retired.write_text('{"edited_by_user": true}\n')
+        # A user's own file under a sample's name is never overwritten.
+        own_portrait = self.comfy / "input" / builder.SAMPLE_PORTRAIT
+        own_portrait.write_bytes(b"my portrait")
         notebook = self.workspace / "my-notebook.ipynb"
         notebook.write_text('{"cells": []}\n')
         git_calls = len(self.lines(self.git_log))
@@ -299,6 +307,7 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         self.assertEqual(edited.read_text(), '{"edited_by_user": true}\n')
         self.assertEqual(retired.read_text(), '{"edited_by_user": true}\n')
         self.assertEqual(notebook.read_text(), '{"cells": []}\n')
+        self.assertEqual(own_portrait.read_bytes(), b"my portrait")
         self.assertEqual(list(self.workspace.glob(".longcat-posix-*")), [])
 
     def test_new_pin_moves_the_wrapper(self):
