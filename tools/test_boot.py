@@ -56,6 +56,8 @@ class BootTests(unittest.TestCase):
         # rewritten; no installation function or branch is replaced.
         shutil.copytree(ROOT / "custom_nodes", self.repo / "custom_nodes")
         shutil.copytree(ROOT / "workflows", self.repo / "workflows")
+        (self.repo / "tools").mkdir()
+        shutil.copy(ROOT / "tools/make_fp8.py", self.repo / "tools/make_fp8.py")
         storage = self.repo / "custom_nodes/comfyui-longcat-longform/storage.py"
         storage.write_text(storage.read_text(encoding="utf-8").replace("/workspace", str(self.workspace)), encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
