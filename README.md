@@ -60,8 +60,10 @@ On first pod boot, `setup.sh`:
    at a pinned commit**, then installs the wrapper's Python packages into ComfyUI's
    persistent virtualenv with the image's PyTorch pinned (`/opt/comfyui-runtime-constraints.txt`)
 5. Downloads the five model files (skip-if-exists, resumable)
-6. Installs the six workflows into ComfyUI's **Workflows** sidebar
-7. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
+6. Builds the **FP8 model** from the BF16 download (`tools/make_fp8.py`, once, a few
+   minutes)
+7. Installs the twelve workflows (BF16 and FP8) into ComfyUI's **Workflows** sidebar
+8. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
 
 On later boots every step finds its work done and is skipped, including the package
 install (a marker records the wrapper's requirements hash).
@@ -80,9 +82,26 @@ and the shared components the wrapper loads.
 | `umt5-xxl-enc-bf16.safetensors` (text encoder) | 11.4 GB | `text_encoders/` |
 | `Wan2_1_VAE_bf16.safetensors` | 0.25 GB | `vae/` |
 | `whisper_large_v3_encoder_fp16.safetensors` (v1.5 audio encoder) | 1.7 GB | `audio_encoders/` |
+| `LongCat-Avatar-15_fp8_e4m3fn.safetensors` (**built at setup**, not downloaded) | ~17 GB | `diffusion_models/` |
 
-The model set is about **46 GB**. Use **100 GB of Network Volume storage** as a
-starting point for ComfyUI, its environment, models and renders.
+The download is about **46 GB**; with the FP8 model, the models take about **63 GB**.
+Use **100 GB of Network Volume storage** as a starting point for ComfyUI, its
+environment, models and renders.
+
+### The FP8 model
+
+There is no ready-made FP8 file of LongCat-Avatar 1.5 in the ComfyUI format (Kijai ships
+bf16 only; the FP8 uploads elsewhere use Meituan's original layout). So setup builds one
+from the BF16 file with [`tools/make_fp8.py`](tools/make_fp8.py), using the same rule
+WanVideoWrapper applies when it loads the BF16 file with `quantization = fp8_e4m3fn`:
+the large attention and feed-forward weights (673 of 1,896 tensors, 29.7 of 31.7 GB)
+are stored as `float8_e4m3fn`; norms, biases, modulation, embeddings and the audio
+projection stay bf16. Computation still runs at bf16.
+
+FP8 halves the VRAM the model weights take (about 17 GB instead of 32 GB) and the data
+read at load. It does not make sampling faster here: the weights are upcast to bf16 for
+each layer. The cost is a small loss of precision; compare a BF16 and an FP8 render of
+the same chunk to judge it.
 
 ## Persistent Network Volume storage
 
@@ -165,8 +184,9 @@ For the first launch, check the logs for **`Network Volume workspace ready at
 ## After it boots
 
 1. Open ComfyUI (port 8188), open the **Workflows** sidebar and choose
-   **`longcat_1_fast_640`** for a first test. Render the final video with
-   **`longcat_2_high_quality_960`**.
+   **`longcat_bf16_1_fast_640`** (or **`longcat_fp8_1_fast_640`**) for a first test.
+   Render the final video with **`longcat_bf16_2_high_quality_960`** (or the `fp8`
+   version).
 2. Set **Load Portrait** and **Load Voiceover**. The output is named after the audio
    file automatically.
 3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
@@ -191,24 +211,29 @@ output-name node, or delete its folder under `output/longcat_longform/`.
 > overwritten on reboot. The flip side is that an updated workflow in this repo won't
 > reach an existing volume until you delete the old file from
 > `ComfyUI/user/default/workflows/` and restart. Workflows shipped under earlier names
-> (`longcat_avatar_*`) are removed at boot unless you edited them.
+> (`longcat_avatar_*`, `longcat_1_*` to `longcat_6_*`) are removed at boot unless you
+> edited them.
 
 ### Workflows
 
-The number gives the order to use them in. **Fast** is for testing timing, lip sync and
-framing; **High Quality** is the final render. **Batch folder** renders every voiceover
-in `ComfyUI/input/batch_audio/`, one video each; the others take one voiceover.
+Every workflow comes twice: **`longcat_bf16_*`** loads the full-precision BF16 model,
+**`longcat_fp8_*`** the FP8 model. The graphs are otherwise identical. The number gives
+the order to use them in. **Fast** is for testing timing, lip sync and framing; **High
+Quality** is the final render. **Batch folder** renders every voiceover in
+`ComfyUI/input/batch_audio/`, one video each; the others take one voiceover.
 
-| Workflow | Use it for | Canvas | Output suffix |
+| Workflow (`longcat_bf16_…` / `longcat_fp8_…`) | Use it for | Canvas | Output suffix (bf16 / fp8) |
 |---|---|---|---|
-| `longcat_1_fast_640` | Fast test, one voiceover | 640 × 640 (480p tier) | `_fast` |
-| `longcat_2_high_quality_960` | Final video, one voiceover | 960 × 960 (720p tier) | none |
-| `longcat_3_fast_640_batch_folder` | Fast test, every voiceover in the folder | 640 × 640 | `_fast` |
-| `longcat_4_high_quality_960_batch_folder` | Final videos, every voiceover in the folder | 960 × 960 | none |
-| `longcat_5_experimental_return_to_portrait_640` | **Experimental**: portrait on each window's last frame | 640 × 640 | `_return_to_portrait` |
-| `longcat_6_experimental_start_to_end_image_640` | **Experimental**: final chunk pulled to an End Image | 640 × 640 | `_start_to_end` |
+| `1_fast_640` | Fast test, one voiceover | 640 × 640 (480p tier) | `_bf16_640` / `_fp8_640` |
+| `2_high_quality_960` | Final video, one voiceover | 960 × 960 (720p tier) | `_bf16_960` / `_fp8_960` |
+| `3_fast_640_batch_folder` | Fast test, every voiceover in the folder | 640 × 640 | `_bf16_640` / `_fp8_640` |
+| `4_high_quality_960_batch_folder` | Final videos, every voiceover in the folder | 960 × 960 | `_bf16_960` / `_fp8_960` |
+| `5_experimental_return_to_portrait_640` | **Experimental**: portrait on each window's last frame | 640 × 640 | `_bf16_640_return_to_portrait` / `_fp8_…` |
+| `6_experimental_start_to_end_image_640` | **Experimental**: final chunk pulled to an End Image | 640 × 640 | `_bf16_640_start_to_end` / `_fp8_…` |
 
-Workflows 1 to 4 use the identity anchor (upstream default).
+Workflows 1 to 4 use the identity anchor (upstream default). The output name carries the
+precision and canvas, so a BF16 and an FP8 render of the same voiceover sit side by side
+(`talk_bf16_960.mp4`, `talk_fp8_960.mp4`) and never resume each other's chunks.
 
 The `anchor` setting lives on the **Split** node, so any workflow can switch mode; use a
 new `name_suffix` when you do. Canvas sizes are multiples of 16. LongCat's tiers are
@@ -260,9 +285,10 @@ These are estimates from the model size. **They haven't been measured on a pod y
 
 | GPU | Notes |
 |---|---|
-| 80–96 GB (H100 / A100 80 GB / RTX PRO 6000) | The bundled settings: bf16 model, no block swap |
-| 48 GB (A6000 / L40S) | Enable **Block Swap** (select it, Ctrl+B; 20 of 48 blocks) and/or set the model loader's `quantization` to `fp8_e4m3fn`; turn on VAE tiling if decode runs out of memory |
-| 24 GB | Fast (640) workflows, fp8, block swap 40+; slow |
+| 80–96 GB (H100 / A100 80 GB / RTX PRO 6000) | BF16 or FP8 workflows as shipped, no block swap |
+| 48 GB (A6000 / L40S) | **FP8** workflows; add **Block Swap** (select it, Ctrl+B; 20 of 48 blocks) if needed, and VAE tiling if decode runs out of memory |
+| 32 GB (RTX 5090) | **FP8** workflows with Block Swap 20+; start at 640; a pod with 64 GB+ of RAM |
+| 24 GB | **FP8** Fast (640) workflows, block swap 40+; slow |
 
 The model must stay at **bf16 base precision** (a wrapper requirement for LongCat).
 Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not).
@@ -297,7 +323,9 @@ the Whisper frame count; continuation tails, trimming and stitching with real ff
 of `setup.sh` against an offline image fixture.
 
 **Not yet verified:** a render on a real GPU, so lip-sync quality, VRAM use and speed are
-unknown, and the two experimental anchor modes are untested ideas.
+unknown, the FP8 model's quality against BF16 is unmeasured, and the two experimental
+anchor modes are untested ideas. The FP8 conversion itself is tested on CPU: tensor
+selection, values against PyTorch's own cast, and loading with `safetensors`.
 
 ## Repository layout
 
@@ -310,13 +338,15 @@ unknown, and the two experimental anchor modes are untested ideas.
 │   └── comfyui-longcat-longform/          # Split / Opening + Reference / Write + Stitch / Name / Prompt / Sigmas / Audio From Folder
 ├── tools/
 │   ├── build_workflow.py                  # generates all workflow JSONs; re-run after edits
+│   ├── make_fp8.py                        # builds the FP8 model at setup (run by setup.sh)
+│   ├── test_fp8.py                        # FP8 tensor selection, values and file format
 │   ├── test_workflows.py                  # graphs vs. node schemas, settings, layout, downloads
 │   ├── test_longform.py                   # planning, audio, continuation and ffmpeg stitching
 │   ├── test_storage.py                    # Network Volume mount and filesystem checks
 │   ├── test_boot.py                       # full setup with image/network fixtures (Linux)
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
-└── workflows/                             # the six workflows listed above
+└── workflows/                             # the twelve workflows listed above
 ```
 
 ## References

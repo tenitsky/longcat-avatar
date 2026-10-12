@@ -238,7 +238,7 @@ class SplitTests(unittest.TestCase):
         self.assertTrue(text.startswith("A man in a grey suit, in front of a white wall. "
                                         "The person is speaking"))
         for w in builder.WORKFLOWS:
-            node = next(n for n in builder.build(w["variant"], w["batch"])["nodes"]
+            node = next(n for n in builder.build(w["variant"], w["batch"], w["precision"])["nodes"]
                         if n["type"] == "LongCatLongformPrompt")
             self.assertEqual(node["widgets_values"], [""])
             out = lc.LongCatLongformPrompt().build(*node["widgets_values"])[0]

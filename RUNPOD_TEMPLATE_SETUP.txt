@@ -58,7 +58,7 @@ Volume disk:              0 GB     # do NOT use a pod-local volume disk
 Volume mount path:        /workspace
 
 # At deploy time, each user attaches their OWN Network Volume at /workspace.
-# Recommended size: 100 GB (models are ~46 GB, plus ComfyUI, venv, renders).
+# Recommended size: 100 GB (models ~63 GB incl. the FP8 copy, plus ComfyUI, venv, renders).
 # setup.sh refuses to run if /workspace is the container disk or a Global Volume.
 # To replace a pod later: deploy in the same datacenter, attach the same volume.
 # Storage types: https://docs.runpod.io/pods/storage/types
@@ -110,7 +110,7 @@ HF_TOKEN=
 
 
 # ------------------------------------------------------------------------------
-# 8. WHAT GETS LOADED ON FIRST BOOT (automatic, ~46 GB)
+# 8. WHAT GETS LOADED ON FIRST BOOT (automatic, ~46 GB download + 17 GB FP8 build)
 # ------------------------------------------------------------------------------
 # Nothing to do by hand; listed so you can follow the logs.
 
@@ -131,14 +131,19 @@ HF_TOKEN=
 #     https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors
 #   models/audio_encoders/whisper_large_v3_encoder_fp16.safetensors            ~1.7 GB
 #     https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/HuMo/whisper_large_v3_encoder_fp16.safetensors
+#   models/diffusion_models/LongCat-Avatar-15_fp8_e4m3fn.safetensors            ~17 GB
+#     NOT downloaded: built from the bf16 file by tools/make_fp8.py on first boot
+#     (a few minutes; log line "FP8 model ready").
 
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
-#   longcat_1_fast_640                                 fast test, one voiceover
-#   longcat_2_high_quality_960                         final video, one voiceover
-#   longcat_3_fast_640_batch_folder                    fast, every voiceover in ComfyUI/input/batch_audio/
-#   longcat_4_high_quality_960_batch_folder            final, every voiceover in that folder
-#   longcat_5_experimental_return_to_portrait_640      experimental
-#   longcat_6_experimental_start_to_end_image_640      experimental
+# 12 in total: each one below as longcat_bf16_<name> (full-precision model) and
+# longcat_fp8_<name> (FP8 model, half the VRAM for the weights).
+#   1_fast_640                                 fast test, one voiceover
+#   2_high_quality_960                         final video, one voiceover
+#   3_fast_640_batch_folder                    fast, every voiceover in ComfyUI/input/batch_audio/
+#   4_high_quality_960_batch_folder            final, every voiceover in that folder
+#   5_experimental_return_to_portrait_640      experimental
+#   6_experimental_start_to_end_image_640      experimental
 
 # Install locations (all on the Network Volume)
 #   /workspace/runpod-slim/ComfyUI/                ComfyUI, custom nodes, models
@@ -149,9 +154,10 @@ HF_TOKEN=
 # ------------------------------------------------------------------------------
 # 9. GPU
 # ------------------------------------------------------------------------------
-# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): bundled settings, no block swap.
-# 48 GB (A6000, L40S): enable the Block Swap node and/or fp8_e4m3fn quantization.
-# 24 GB: Fast (640) workflows, fp8, block swap 40+; slow.
+# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): BF16 or FP8 workflows, no block swap.
+# 48 GB (A6000, L40S): FP8 workflows, Block Swap if needed.
+# 32 GB (RTX 5090): FP8 workflows + Block Swap 20+, start at 640, pod with 64 GB+ RAM.
+# 24 GB: FP8 Fast (640) workflows, block swap 40+; slow.
 # These are estimates from the model size, not yet benchmarked on a live pod.
 
 
@@ -162,6 +168,7 @@ HF_TOKEN=
 #   "GPU: <name>"                    (FATAL here = host driver too old; redeploy elsewhere)
 #   "ComfyUI-WanVideoWrapper: 088128b"
 #   model downloads ... "done."
+#   "FP8 model ready: LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 #   "Setup complete! Handing over to start script..."
 # A failed download stops setup; restart the pod and finished files are skipped.
 # Jupyter stuck on "initializing": check /jupyter.log from the pod terminal.

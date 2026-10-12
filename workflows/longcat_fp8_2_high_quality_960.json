@@ -1,5 +1,5 @@
 {
- "id": "c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05",
+ "id": "d8860ff8-69f7-4bc5-ac32-7d21b29166c9",
  "revision": 0,
  "last_node_id": 70,
  "last_link_id": 42,
@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar - Fast (640)\n\nFast preview at 640 x 640 (LongCat's 480p tier): under half the pixels of High Quality. Check timing, lip sync and framing here, then render the final with High Quality (960).\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - FP8 - High Quality (960)\n\nFinal quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**FP8 model** (~17 GB), made from the BF16 file at setup: about half the VRAM for the model weights, at a small cost in precision. Compare with the BF16 version of this workflow.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -143,7 +143,7 @@
    ],
    "size": [
     520,
-    520
+    600
    ],
    "flags": {},
    "order": 5,
@@ -155,7 +155,7 @@
    },
    "title": "About stage 4",
    "widgets_values": [
-    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5**, bf16 (LongCat only runs at bf16 base precision), with the **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 80 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks), and/or set the model loader's `quantization` to `fp8_e4m3fn`. Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
+    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, FP8** (`LongCat-Avatar-15_fp8_e4m3fn.safetensors`, ~17 GB). Setup builds it once from the BF16 download: the large weights are stored as float8_e4m3fn, everything else stays bf16, exactly as the loader's `fp8_e4m3fn` option would convert the BF16 file. Computation still runs at bf16 base precision, which LongCat requires.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 48 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks; raise it if you still run out). Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -361,7 +361,7 @@
    "widgets_values": [
     ".mp4",
     "",
-    "_fast"
+    "_fp8_960"
    ]
   },
   {
@@ -395,7 +395,7 @@
    },
    "title": "Width",
    "widgets_values": [
-    640,
+    960,
     "fixed"
    ]
   },
@@ -430,7 +430,7 @@
    },
    "title": "Height",
    "widgets_values": [
-    640,
+    960,
     "fixed"
    ]
   },
@@ -873,20 +873,13 @@
     "Node name for S&R": "WanVideoModelLoader",
     "cnr_id": "comfyui-wanvideowrapper",
     "aux_id": "kijai/ComfyUI-WanVideoWrapper",
-    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
-    "models": [
-     {
-      "name": "LongCat-Avatar-15_bf16.safetensors",
-      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LongCat/LongCat-Avatar-15_bf16.safetensors",
-      "directory": "diffusion_models"
-     }
-    ]
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
    },
-   "title": "LongCat-Avatar 1.5 (bf16)",
+   "title": "LongCat-Avatar 1.5 (fp8 e4m3fn)",
    "widgets_values": [
-    "LongCat-Avatar-15_bf16.safetensors",
+    "LongCat-Avatar-15_fp8_e4m3fn.safetensors",
     "bf16",
-    "disabled",
+    "fp8_e4m3fn",
     "offload_device",
     "sdpa",
     "default"
@@ -1134,8 +1127,8 @@
    "title": "Crop portrait to canvas",
    "widgets_values": [
     "lanczos",
-    640,
-    640,
+    960,
+    960,
     "center"
    ]
   },
@@ -1766,8 +1759,8 @@
     0,
     1,
     93,
-    "run1_fast",
-    "longcat_avatar_fast.mp4",
+    "run1_fp8_960",
+    "longcat_avatar_fp8_960.mp4",
     true,
     0
    ]

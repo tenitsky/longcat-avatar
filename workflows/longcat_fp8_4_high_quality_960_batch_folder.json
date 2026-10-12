@@ -1,8 +1,8 @@
 {
- "id": "5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42",
+ "id": "9eb768cd-76de-4eec-a816-5d4072a7867e",
  "revision": 0,
  "last_node_id": 70,
- "last_link_id": 42,
+ "last_link_id": 44,
  "nodes": [
   {
    "id": 1,
@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar - Experimental: Return to Portrait (640)\n\nEXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can place its identity reference at any point in a window. This workflow puts the portrait on every window's last frame, pulling each 3.2 s chunk back toward the portrait pose, the closest LongCat gets to MiniMax H3's first/last-frame anchoring. Expect less drift over long videos and possibly a repeating motion every chunk.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - FP8 - High Quality (960) - Batch Folder (one video per voiceover)\n\nFinal quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**FP8 model** (~17 GB), made from the BF16 file at setup: about half the VRAM for the model weights, at a small cost in precision. Compare with the BF16 version of this workflow.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Audio From Folder** - put your voiceovers in `ComfyUI/input/batch_audio/` (.wav, .mp3, .flac, .m4a, .aac, .ogg, .opus). Each file becomes its own video, in name order. Upload them with Jupyter (port 8888) or FileBrowser.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk of the first file. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a large batch count: roughly the **total seconds of all files / 3.2**, plus a margin. Each run renders the next unfinished chunk of the next unfinished file. When every file is done the queue is cleared, so extra runs cost nothing.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Add files later:** drop them in the folder and run again; finished videos are skipped. The same portrait and prompt are used for every file.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -61,7 +61,7 @@
    "type": "MarkdownNote",
    "pos": [
     660,
-    1370
+    1230
    ],
    "size": [
     520,
@@ -129,7 +129,7 @@
    },
    "title": "About stage 3",
    "widgets_values": [
-    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: return to portrait** (experimental): the reference sits on each window's last frame with no mask, pulling every chunk back toward the portrait. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
+    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: identity** (upstream default): the portrait is the reference at frame index 10 of each window. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -143,7 +143,7 @@
    ],
    "size": [
     520,
-    520
+    600
    ],
    "flags": {},
    "order": 5,
@@ -155,7 +155,7 @@
    },
    "title": "About stage 4",
    "widgets_values": [
-    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5**, bf16 (LongCat only runs at bf16 base precision), with the **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 80 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks), and/or set the model loader's `quantization` to `fp8_e4m3fn`. Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
+    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, FP8** (`LongCat-Avatar-15_fp8_e4m3fn.safetensors`, ~17 GB). Setup builds it once from the BF16 download: the large weights are stored as float8_e4m3fn, everything else stays bf16, exactly as the loader's `fp8_e4m3fn` option would convert the BF16 file. Computation still runs at bf16 base precision, which LongCat requires.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 48 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks; raise it if you still run out). Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -233,7 +233,7 @@
    },
    "title": "About stage 7",
    "widgets_values": [
-    "## 7. Save + stitch\n\nEach chunk is saved to `output/longcat_longform/<name>/chunk_0000.mp4`, ... as it finishes, so you can check one early.\n\nThe final video is saved as `output/<audio name><suffix>.mp4`, stitched with your **original** audio track.\n\n**Resume:** run again; finished chunks are skipped. **Redo from a chunk:** delete that chunk's file **and every later one**, then run; each chunk continues from the one before it. **Render a finished video again:** change `name_suffix`, or delete its folder under `output/longcat_longform/`."
+    "## 7. Save + stitch\n\nEach chunk is saved to `output/longcat_longform/<name>/chunk_0000.mp4`, ... as it finishes, so you can check one early.\n\nEach file's video is saved as `output/<file name><suffix>.mp4`, stitched with your **original** audio track.\n\n**Resume:** run again; finished chunks are skipped. **Redo from a chunk:** delete that chunk's file **and every later one**, then run; each chunk continues from the one before it. **Render a finished video again:** change `name_suffix`, or delete its folder under `output/longcat_longform/`."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -283,14 +283,14 @@
   },
   {
    "id": 11,
-   "type": "LoadAudio",
+   "type": "LongCatLongformAudioFolder",
    "pos": [
     690,
     670
    ],
    "size": [
     460,
-    150
+    190
    ],
    "flags": {},
    "order": 10,
@@ -298,50 +298,22 @@
    "inputs": [],
    "outputs": [
     {
-     "localized_name": "AUDIO",
-     "name": "AUDIO",
+     "localized_name": "audio",
+     "name": "audio",
      "type": "AUDIO",
      "links": [
       1,
       2
      ]
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "LoadAudio",
-    "cnr_id": "comfy-core"
-   },
-   "title": "Load Voiceover",
-   "widgets_values": [
-    "voiceover.mp3",
-    null,
-    null
-   ],
-   "color": "#322",
-   "bgcolor": "#533"
-  },
-  {
-   "id": 21,
-   "type": "LongCatLongformAudioName",
-   "pos": [
-    690,
-    870
-   ],
-   "size": [
-    460,
-    130
-   ],
-   "flags": {},
-   "order": 11,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
+    },
     {
      "localized_name": "name",
      "name": "name",
      "type": "STRING",
      "links": [
-      41
+      41,
+      42,
+      43
      ]
     },
     {
@@ -349,23 +321,72 @@
      "name": "filename",
      "type": "STRING",
      "links": [
-      42
+      44
+     ]
+    },
+    {
+     "localized_name": "file_number",
+     "name": "file_number",
+     "type": "INT",
+     "links": []
+    },
+    {
+     "localized_name": "total_files",
+     "name": "total_files",
+     "type": "INT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformAudioFolder",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Audio From Folder (one video per file)",
+   "widgets_values": [
+    "batch_audio",
+    "_fp8_960",
+    true
+   ],
+   "color": "#322",
+   "bgcolor": "#533"
+  },
+  {
+   "id": 13,
+   "type": "PrimitiveInt",
+   "pos": [
+    690,
+    910
+   ],
+   "size": [
+    460,
+    90
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "INT",
+     "name": "INT",
+     "type": "INT",
+     "links": [
+      8
      ]
     }
    ],
    "properties": {
-    "Node name for S&R": "LongCatLongformAudioName",
-    "cnr_id": "comfyui-longcat-longform"
+    "Node name for S&R": "PrimitiveInt",
+    "cnr_id": "comfy-core"
    },
-   "title": "Output name (audio filename + name_suffix)",
+   "title": "Width",
    "widgets_values": [
-    ".mp4",
-    "",
-    "_return_to_portrait"
+    960,
+    "fixed"
    ]
   },
   {
-   "id": 13,
+   "id": 14,
    "type": "PrimitiveInt",
    "pos": [
     690,
@@ -385,41 +406,6 @@
      "name": "INT",
      "type": "INT",
      "links": [
-      8
-     ]
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "PrimitiveInt",
-    "cnr_id": "comfy-core"
-   },
-   "title": "Width",
-   "widgets_values": [
-    640,
-    "fixed"
-   ]
-  },
-  {
-   "id": 14,
-   "type": "PrimitiveInt",
-   "pos": [
-    690,
-    1190
-   ],
-   "size": [
-    460,
-    90
-   ],
-   "flags": {},
-   "order": 13,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
-    {
-     "localized_name": "INT",
-     "name": "INT",
-     "type": "INT",
-     "links": [
       9
      ]
     }
@@ -430,7 +416,7 @@
    },
    "title": "Height",
    "widgets_values": [
-    640,
+    960,
     "fixed"
    ]
   },
@@ -446,7 +432,7 @@
     200
    ],
    "flags": {},
-   "order": 14,
+   "order": 13,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -480,7 +466,7 @@
     300
    ],
    "flags": {},
-   "order": 15,
+   "order": 14,
    "mode": 0,
    "inputs": [
     {
@@ -558,7 +544,7 @@
     400
    ],
    "flags": {},
-   "order": 16,
+   "order": 15,
    "mode": 0,
    "inputs": [
     {
@@ -566,6 +552,13 @@
      "name": "audio",
      "type": "AUDIO",
      "link": 1
+    },
+    {
+     "localized_name": "session",
+     "name": "session",
+     "type": "STRING",
+     "link": 41,
+     "shape": 7
     }
    ],
    "outputs": [
@@ -681,7 +674,7 @@
    },
    "title": "Split (next unfinished window)",
    "widgets_values": [
-    "return to portrait (experimental)"
+    "identity (default)"
    ]
   },
   {
@@ -696,7 +689,7 @@
     250
    ],
    "flags": {},
-   "order": 17,
+   "order": 16,
    "mode": 4,
    "inputs": [],
    "outputs": [
@@ -738,7 +731,7 @@
     170
    ],
    "flags": {},
-   "order": 18,
+   "order": 17,
    "mode": 0,
    "inputs": [
     {
@@ -799,7 +792,7 @@
     330
    ],
    "flags": {},
-   "order": 19,
+   "order": 18,
    "mode": 0,
    "inputs": [
     {
@@ -873,20 +866,13 @@
     "Node name for S&R": "WanVideoModelLoader",
     "cnr_id": "comfyui-wanvideowrapper",
     "aux_id": "kijai/ComfyUI-WanVideoWrapper",
-    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
-    "models": [
-     {
-      "name": "LongCat-Avatar-15_bf16.safetensors",
-      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LongCat/LongCat-Avatar-15_bf16.safetensors",
-      "directory": "diffusion_models"
-     }
-    ]
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
    },
-   "title": "LongCat-Avatar 1.5 (bf16)",
+   "title": "LongCat-Avatar 1.5 (fp8 e4m3fn)",
    "widgets_values": [
-    "LongCat-Avatar-15_bf16.safetensors",
+    "LongCat-Avatar-15_fp8_e4m3fn.safetensors",
     "bf16",
-    "disabled",
+    "fp8_e4m3fn",
     "offload_device",
     "sdpa",
     "default"
@@ -904,7 +890,7 @@
     170
    ],
    "flags": {},
-   "order": 20,
+   "order": 19,
    "mode": 0,
    "inputs": [
     {
@@ -960,7 +946,7 @@
     130
    ],
    "flags": {},
-   "order": 21,
+   "order": 20,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -1005,7 +991,7 @@
     90
    ],
    "flags": {},
-   "order": 22,
+   "order": 21,
    "mode": 0,
    "inputs": [],
    "outputs": [
@@ -1039,7 +1025,7 @@
     220
    ],
    "flags": {},
-   "order": 23,
+   "order": 22,
    "mode": 0,
    "inputs": [
     {
@@ -1088,7 +1074,7 @@
     170
    ],
    "flags": {},
-   "order": 24,
+   "order": 23,
    "mode": 0,
    "inputs": [
     {
@@ -1134,8 +1120,8 @@
    "title": "Crop portrait to canvas",
    "widgets_values": [
     "lanczos",
-    640,
-    640,
+    960,
+    960,
     "center"
    ]
   },
@@ -1151,7 +1137,7 @@
     250
    ],
    "flags": {},
-   "order": 25,
+   "order": 24,
    "mode": 0,
    "inputs": [
     {
@@ -1214,7 +1200,7 @@
     190
    ],
    "flags": {},
-   "order": 26,
+   "order": 25,
    "mode": 0,
    "inputs": [
     {
@@ -1234,6 +1220,13 @@
      "name": "end_latent",
      "type": "LATENT",
      "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "session",
+     "name": "session",
+     "type": "STRING",
+     "link": 42,
      "shape": 7
     },
     {
@@ -1295,7 +1288,7 @@
     300
    ],
    "flags": {},
-   "order": 27,
+   "order": 26,
    "mode": 0,
    "inputs": [
     {
@@ -1398,7 +1391,7 @@
     330
    ],
    "flags": {},
-   "order": 28,
+   "order": 27,
    "mode": 0,
    "inputs": [
     {
@@ -1531,7 +1524,7 @@
     250
    ],
    "flags": {},
-   "order": 29,
+   "order": 28,
    "mode": 0,
    "inputs": [
     {
@@ -1617,7 +1610,7 @@
     250
    ],
    "flags": {},
-   "order": 30,
+   "order": 29,
    "mode": 0,
    "inputs": [
     {
@@ -1671,7 +1664,7 @@
     340
    ],
    "flags": {},
-   "order": 31,
+   "order": 30,
    "mode": 0,
    "inputs": [
     {
@@ -1724,7 +1717,7 @@
      "localized_name": "session",
      "name": "session",
      "type": "STRING",
-     "link": 41,
+     "link": 43,
      "widget": {
       "name": "session"
      }
@@ -1733,7 +1726,7 @@
      "localized_name": "filename",
      "name": "filename",
      "type": "STRING",
-     "link": 42,
+     "link": 44,
      "widget": {
       "name": "filename"
      }
@@ -1766,9 +1759,9 @@
     0,
     1,
     93,
-    "run1_return_to_portrait",
-    "longcat_avatar_return_to_portrait.mp4",
-    true,
+    "batch_fp8_960",
+    "batch_fp8_960.mp4",
+    false,
     0
    ]
   }
@@ -1883,7 +1876,7 @@
    20,
    12,
    53,
-   3,
+   4,
    "INT"
   ],
   [
@@ -1891,7 +1884,7 @@
    20,
    11,
    53,
-   4,
+   5,
    "BOOLEAN"
   ],
   [
@@ -2096,16 +2089,32 @@
   ],
   [
    41,
-   21,
-   0,
+   11,
+   1,
+   20,
+   1,
+   "STRING"
+  ],
+  [
+   42,
+   11,
+   1,
+   53,
+   3,
+   "STRING"
+  ],
+  [
+   43,
+   11,
+   1,
    70,
    6,
    "STRING"
   ],
   [
-   42,
-   21,
-   1,
+   44,
+   11,
+   2,
    70,
    7,
    "STRING"
@@ -2119,7 +2128,7 @@
     660,
     0,
     520,
-    1310
+    1170
    ],
    "color": "#a1309b",
    "font_size": 26,

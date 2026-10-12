@@ -1,0 +1,2234 @@
+{
+ "id": "2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264",
+ "revision": 0,
+ "last_node_id": 70,
+ "last_link_id": 44,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "MarkdownNote",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    520,
+    900
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "Start here",
+   "widgets_values": [
+    "# LongCat Avatar - BF16 - High Quality (960) - Batch Folder (one video per voiceover)\n\nFinal quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. Every chunk continues from the previous one's last frames, so there are no pose resets at the joins.\n\n**BF16 model** (31.7 GB): full precision, the reference quality. Needs an 80 GB GPU, or Block Swap below that.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Audio From Folder** - put your voiceovers in `ComfyUI/input/batch_audio/` (.wav, .mp3, .flac, .m4a, .aac, .ogg, .opus). Each file becomes its own video, in name order. Upload them with Jupyter (port 8888) or FileBrowser.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk of the first file. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a large batch count: roughly the **total seconds of all files / 3.2**, plus a margin. Each run renders the next unfinished chunk of the next unfinished file. When every file is done the queue is cleared, so extra runs cost nothing.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Add files later:** drop them in the folder and run again; finished videos are skipped. The same portrait and prompt are used for every file.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 2,
+   "type": "MarkdownNote",
+   "pos": [
+    0,
+    950
+   ],
+   "size": [
+    520,
+    420
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About the model",
+   "widgets_values": [
+    "## About LongCat-Video-Avatar 1.5\n\nMeituan's audio-driven avatar model (MIT licence), built on LongCat-Video. It runs here through **kijai/ComfyUI-WanVideoWrapper**; ComfyUI has no native LongCat video nodes.\n\nIt generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video continuation**: each window opens on the last 13 frames of the one before and adds 80 new frames.\n\n**No end frame.** Conditioning frames always sit at the start of a window. The two experimental workflows use the one lever there is: the position of the identity reference inside the window.\n\nModel card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 3,
+   "type": "MarkdownNote",
+   "pos": [
+    660,
+    1230
+   ],
+   "size": [
+    520,
+    440
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 1",
+   "widgets_values": [
+    "## 1. Inputs\n\n**Portrait:** one person facing the camera, face clearly visible. The first frame of the video, and the identity reference for every later chunk. Any size; it is center-cropped to the canvas.\n\n**Canvas** (Width x Height), multiples of 16. LongCat has two tiers:\n\n| Tier | 1:1 | 16:9 | 9:16 |\n|---|---|---|---|\n| 480p | 640 x 640 | 832 x 480 | 480 x 832 |\n| 720p | 960 x 960 | 1280 x 768 | 768 x 1280 |\n\nLarger canvases need more memory and time."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 4,
+   "type": "MarkdownNote",
+   "pos": [
+    1320,
+    760
+   ],
+   "size": [
+    520,
+    420
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 2",
+   "widgets_values": [
+    "## 2. Prompt (optional)\n\n**Leave it empty** for a generic talking-head prompt: the person speaks to the camera, with small natural motion, a static camera and an unchanged background. The person and background themselves come from the portrait.\n\nTo steer it, type one or two sentences about the portrait, e.g. *A woman with brown hair in a navy blazer, in front of a plain grey wall.* They go in front of the generic prompt. Naming the background can help hold it in place on long videos.\n\nThere is no negative prompt: the distilled model runs at cfg 1, which does not use one. The text is encoded once and cached."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 5,
+   "type": "MarkdownNote",
+   "pos": [
+    1980,
+    610
+   ],
+   "size": [
+    520,
+    600
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 3",
+   "widgets_values": [
+    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: identity** (upstream default): the portrait is the reference at frame index 10 of each window. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 6,
+   "type": "MarkdownNote",
+   "pos": [
+    2640,
+    1870
+   ],
+   "size": [
+    520,
+    600
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 4",
+   "widgets_values": [
+    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, BF16** (`LongCat-Avatar-15_bf16.safetensors`, 31.7 GB): full precision. LongCat only runs at bf16 base precision.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 80 GB of VRAM?** Use the **FP8** version of this workflow, and/or select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks). Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 7,
+   "type": "MarkdownNote",
+   "pos": [
+    3300,
+    1650
+   ],
+   "size": [
+    520,
+    380
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 5",
+   "widgets_values": [
+    "## 5. Portrait, opening and audio guidance\n\n- The portrait is cropped to the canvas and encoded once.\n- **Opening + Reference** gives chunk 1 the portrait as its single opening frame. Later chunks get the previous chunk's last 13 frames, re-encoded (the v1.5 way), plus a reference latent.\n- **Whisper Embeds** turns the window's audio into lip-sync features; **Extend Embeds** combines them with the opening, the reference and its position.\n\nNothing to set here."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 8,
+   "type": "MarkdownNote",
+   "pos": [
+    3960,
+    760
+   ],
+   "size": [
+    520,
+    260
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 6",
+   "widgets_values": [
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 9,
+   "type": "MarkdownNote",
+   "pos": [
+    4620,
+    550
+   ],
+   "size": [
+    520,
+    400
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "MarkdownNote"
+   },
+   "title": "About stage 7",
+   "widgets_values": [
+    "## 7. Save + stitch\n\nEach chunk is saved to `output/longcat_longform/<name>/chunk_0000.mp4`, ... as it finishes, so you can check one early.\n\nEach file's video is saved as `output/<file name><suffix>.mp4`, stitched with your **original** audio track.\n\n**Resume:** run again; finished chunks are skipped. **Redo from a chunk:** delete that chunk's file **and every later one**, then run; each chunk continues from the one before it. **Render a finished video again:** change `name_suffix`, or delete its folder under `output/longcat_longform/`."
+   ],
+   "color": "#222",
+   "bgcolor": "#000"
+  },
+  {
+   "id": 10,
+   "type": "LoadImage",
+   "pos": [
+    690,
+    120
+   ],
+   "size": [
+    460,
+    500
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      7
+     ]
+    },
+    {
+     "localized_name": "MASK",
+     "name": "MASK",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage",
+    "cnr_id": "comfy-core"
+   },
+   "title": "Load Portrait (first frame + identity)",
+   "widgets_values": [
+    "portrait.png",
+    "image"
+   ],
+   "color": "#322",
+   "bgcolor": "#533"
+  },
+  {
+   "id": 11,
+   "type": "LongCatLongformAudioFolder",
+   "pos": [
+    690,
+    670
+   ],
+   "size": [
+    460,
+    190
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "type": "AUDIO",
+     "links": [
+      1,
+      2
+     ]
+    },
+    {
+     "localized_name": "name",
+     "name": "name",
+     "type": "STRING",
+     "links": [
+      41,
+      42,
+      43
+     ]
+    },
+    {
+     "localized_name": "filename",
+     "name": "filename",
+     "type": "STRING",
+     "links": [
+      44
+     ]
+    },
+    {
+     "localized_name": "file_number",
+     "name": "file_number",
+     "type": "INT",
+     "links": []
+    },
+    {
+     "localized_name": "total_files",
+     "name": "total_files",
+     "type": "INT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformAudioFolder",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Audio From Folder (one video per file)",
+   "widgets_values": [
+    "batch_audio",
+    "_bf16_960",
+    true
+   ],
+   "color": "#322",
+   "bgcolor": "#533"
+  },
+  {
+   "id": 13,
+   "type": "PrimitiveInt",
+   "pos": [
+    690,
+    910
+   ],
+   "size": [
+    460,
+    90
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "INT",
+     "name": "INT",
+     "type": "INT",
+     "links": [
+      8
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PrimitiveInt",
+    "cnr_id": "comfy-core"
+   },
+   "title": "Width",
+   "widgets_values": [
+    960,
+    "fixed"
+   ]
+  },
+  {
+   "id": 14,
+   "type": "PrimitiveInt",
+   "pos": [
+    690,
+    1050
+   ],
+   "size": [
+    460,
+    90
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "INT",
+     "name": "INT",
+     "type": "INT",
+     "links": [
+      9
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PrimitiveInt",
+    "cnr_id": "comfy-core"
+   },
+   "title": "Height",
+   "widgets_values": [
+    960,
+    "fixed"
+   ]
+  },
+  {
+   "id": 30,
+   "type": "LongCatLongformPrompt",
+   "pos": [
+    1350,
+    120
+   ],
+   "size": [
+    460,
+    200
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "prompt",
+     "name": "prompt",
+     "type": "STRING",
+     "links": [
+      3
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformPrompt",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Prompt (optional - leave empty or describe the portrait)",
+   "widgets_values": [
+    ""
+   ]
+  },
+  {
+   "id": 57,
+   "type": "WanVideoTextEncodeCached",
+   "pos": [
+    1350,
+    370
+   ],
+   "size": [
+    460,
+    300
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "extender_args",
+     "name": "extender_args",
+     "type": "WANVIDEOPROMPTEXTENDER_ARGS",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "positive_prompt",
+     "name": "positive_prompt",
+     "type": "STRING",
+     "link": 3,
+     "widget": {
+      "name": "positive_prompt"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "text_embeds",
+     "name": "text_embeds",
+     "type": "WANVIDEOTEXTEMBEDS",
+     "links": [
+      32
+     ]
+    },
+    {
+     "localized_name": "negative_text_embeds",
+     "name": "negative_text_embeds",
+     "type": "WANVIDEOTEXTEMBEDS",
+     "links": []
+    },
+    {
+     "localized_name": "positive_prompt",
+     "name": "positive_prompt",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoTextEncodeCached",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
+    "models": [
+     {
+      "name": "umt5-xxl-enc-bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors",
+      "directory": "text_encoders"
+     }
+    ]
+   },
+   "title": "Text encoder (umt5-xxl, cached)",
+   "widgets_values": [
+    "umt5-xxl-enc-bf16.safetensors",
+    "bf16",
+    "",
+    "",
+    "disabled",
+    true,
+    "gpu"
+   ]
+  },
+  {
+   "id": 20,
+   "type": "LongCatLongformSplit",
+   "pos": [
+    2010,
+    120
+   ],
+   "size": [
+    460,
+    400
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "type": "AUDIO",
+     "link": 1
+    },
+    {
+     "localized_name": "session",
+     "name": "session",
+     "type": "STRING",
+     "link": 41,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "audio_chunk",
+     "name": "audio_chunk",
+     "type": "AUDIO",
+     "links": [
+      36
+     ]
+    },
+    {
+     "localized_name": "whisper_audio",
+     "name": "whisper_audio",
+     "type": "AUDIO",
+     "links": [
+      17
+     ]
+    },
+    {
+     "localized_name": "whisper_frames",
+     "name": "whisper_frames",
+     "type": "INT",
+     "links": [
+      18
+     ]
+    },
+    {
+     "localized_name": "num_frames",
+     "name": "num_frames",
+     "type": "INT",
+     "links": [
+      24
+     ]
+    },
+    {
+     "localized_name": "overlap",
+     "name": "overlap",
+     "type": "INT",
+     "links": [
+      25
+     ]
+    },
+    {
+     "localized_name": "frames_processed",
+     "name": "frames_processed",
+     "type": "INT",
+     "links": [
+      26
+     ]
+    },
+    {
+     "localized_name": "ref_frame_index",
+     "name": "ref_frame_index",
+     "type": "INT",
+     "links": [
+      27
+     ]
+    },
+    {
+     "localized_name": "ref_mask_frame_range",
+     "name": "ref_mask_frame_range",
+     "type": "INT",
+     "links": [
+      28
+     ]
+    },
+    {
+     "localized_name": "trim_start",
+     "name": "trim_start",
+     "type": "INT",
+     "links": [
+      40
+     ]
+    },
+    {
+     "localized_name": "keep_frames",
+     "name": "keep_frames",
+     "type": "INT",
+     "links": [
+      39
+     ]
+    },
+    {
+     "localized_name": "total_chunks",
+     "name": "total_chunks",
+     "type": "INT",
+     "links": [
+      38
+     ]
+    },
+    {
+     "localized_name": "use_end_image",
+     "name": "use_end_image",
+     "type": "BOOLEAN",
+     "links": [
+      15
+     ]
+    },
+    {
+     "localized_name": "chunk_index",
+     "name": "chunk_index",
+     "type": "INT",
+     "links": [
+      14,
+      37
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformSplit",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Split (next unfinished window)",
+   "widgets_values": [
+    "identity (default)"
+   ]
+  },
+  {
+   "id": 42,
+   "type": "WanVideoBlockSwap",
+   "pos": [
+    2670,
+    120
+   ],
+   "size": [
+    460,
+    250
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 4,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "block_swap_args",
+     "name": "block_swap_args",
+     "type": "BLOCKSWAPARGS",
+     "links": [
+      4
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoBlockSwap",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Block Swap - Ctrl+B to enable below 80 GB VRAM",
+   "widgets_values": [
+    20,
+    false,
+    false,
+    false,
+    0,
+    1,
+    false
+   ]
+  },
+  {
+   "id": 41,
+   "type": "WanVideoLoraSelect",
+   "pos": [
+    2670,
+    420
+   ],
+   "size": [
+    460,
+    170
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "prev_lora",
+     "name": "prev_lora",
+     "type": "WANVIDLORA",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "blocks",
+     "name": "blocks",
+     "type": "SELECTEDBLOCKS",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "lora",
+     "name": "lora",
+     "type": "WANVIDLORA",
+     "links": [
+      5
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoLoraSelect",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
+    "models": [
+     {
+      "name": "LongCat-Avatar-15_dmd_distill_lora_rank128_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LongCat/LongCat-Avatar-15_dmd_distill_lora_rank128_bf16.safetensors",
+      "directory": "loras"
+     }
+    ]
+   },
+   "title": "DMD distill LoRA (8 steps)",
+   "widgets_values": [
+    "LongCat-Avatar-15_dmd_distill_lora_rank128_bf16.safetensors",
+    1.0,
+    false,
+    false
+   ]
+  },
+  {
+   "id": 40,
+   "type": "WanVideoModelLoader",
+   "pos": [
+    2670,
+    640
+   ],
+   "size": [
+    460,
+    330
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "compile_args",
+     "name": "compile_args",
+     "type": "WANCOMPILEARGS",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "block_swap_args",
+     "name": "block_swap_args",
+     "type": "BLOCKSWAPARGS",
+     "link": 4,
+     "shape": 7
+    },
+    {
+     "localized_name": "lora",
+     "name": "lora",
+     "type": "WANVIDLORA",
+     "link": 5,
+     "shape": 7
+    },
+    {
+     "localized_name": "vram_management_args",
+     "name": "vram_management_args",
+     "type": "VRAM_MANAGEMENTARGS",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "extra_model",
+     "name": "extra_model",
+     "type": "VACEPATH",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "fantasytalking_model",
+     "name": "fantasytalking_model",
+     "type": "FANTASYTALKINGMODEL",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "multitalk_model",
+     "name": "multitalk_model",
+     "type": "MULTITALKMODEL",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "fantasyportrait_model",
+     "name": "fantasyportrait_model",
+     "type": "FANTASYPORTRAITMODEL",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "WANVIDEOMODEL",
+     "links": [
+      29
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoModelLoader",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
+    "models": [
+     {
+      "name": "LongCat-Avatar-15_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LongCat/LongCat-Avatar-15_bf16.safetensors",
+      "directory": "diffusion_models"
+     }
+    ]
+   },
+   "title": "LongCat-Avatar 1.5 (bf16, full precision)",
+   "widgets_values": [
+    "LongCat-Avatar-15_bf16.safetensors",
+    "bf16",
+    "disabled",
+    "offload_device",
+    "sdpa",
+    "default"
+   ]
+  },
+  {
+   "id": 43,
+   "type": "WanVideoVAELoader",
+   "pos": [
+    2670,
+    1020
+   ],
+   "size": [
+    460,
+    170
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "compile_args",
+     "name": "compile_args",
+     "type": "WANCOMPILEARGS",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "WANVAE",
+     "links": [
+      10,
+      23,
+      34
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoVAELoader",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
+    "models": [
+     {
+      "name": "Wan2_1_VAE_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors",
+      "directory": "vae"
+     }
+    ]
+   },
+   "title": "Wan 2.1 VAE",
+   "widgets_values": [
+    "Wan2_1_VAE_bf16.safetensors",
+    "bf16",
+    false,
+    false
+   ]
+  },
+  {
+   "id": 45,
+   "type": "WhisperModelLoader",
+   "pos": [
+    2670,
+    1240
+   ],
+   "size": [
+    460,
+    130
+   ],
+   "flags": {},
+   "order": 20,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "whisper_model",
+     "name": "whisper_model",
+     "type": "WHISPERMODEL",
+     "links": [
+      16
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WhisperModelLoader",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
+    "models": [
+     {
+      "name": "whisper_large_v3_encoder_fp16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/HuMo/whisper_large_v3_encoder_fp16.safetensors",
+      "directory": "audio_encoders"
+     }
+    ]
+   },
+   "title": "Whisper large-v3 encoder",
+   "widgets_values": [
+    "whisper_large_v3_encoder_fp16.safetensors",
+    "fp16",
+    "main_device"
+   ]
+  },
+  {
+   "id": 46,
+   "type": "LongCatLongformSigmas",
+   "pos": [
+    2670,
+    1420
+   ],
+   "size": [
+    460,
+    90
+   ],
+   "flags": {},
+   "order": 21,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "sigmas",
+     "name": "sigmas",
+     "type": "SIGMAS",
+     "links": [
+      6
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformSigmas",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "v1.5 Distill Sigmas (8 steps, shift 7)",
+   "widgets_values": [
+    7.0
+   ]
+  },
+  {
+   "id": 47,
+   "type": "WanVideoSchedulerv2",
+   "pos": [
+    2670,
+    1560
+   ],
+   "size": [
+    460,
+    220
+   ],
+   "flags": {},
+   "order": 22,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "sigmas",
+     "name": "sigmas",
+     "type": "SIGMAS",
+     "link": 6,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "type": "WANVIDEOSCHEDULER",
+     "links": [
+      31
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoSchedulerv2",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Scheduler (euler, custom sigmas)",
+   "widgets_values": [
+    "euler",
+    8,
+    7.0,
+    0,
+    -1,
+    false
+   ]
+  },
+  {
+   "id": 50,
+   "type": "ImageScale",
+   "pos": [
+    3330,
+    120
+   ],
+   "size": [
+    460,
+    170
+   ],
+   "flags": {},
+   "order": 23,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 7
+    },
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "link": 8,
+     "widget": {
+      "name": "width"
+     }
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "link": 9,
+     "widget": {
+      "name": "height"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      11,
+      12
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageScale",
+    "cnr_id": "comfy-core"
+   },
+   "title": "Crop portrait to canvas",
+   "widgets_values": [
+    "lanczos",
+    960,
+    960,
+    "center"
+   ]
+  },
+  {
+   "id": 51,
+   "type": "WanVideoEncode",
+   "pos": [
+    3330,
+    340
+   ],
+   "size": [
+    460,
+    250
+   ],
+   "flags": {},
+   "order": 24,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "WANVAE",
+     "link": 10
+    },
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 11
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "links": [
+      13,
+      19
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoEncode",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Encode portrait",
+   "widgets_values": [
+    false,
+    272,
+    272,
+    144,
+    128,
+    0.0,
+    1.0
+   ]
+  },
+  {
+   "id": 53,
+   "type": "LongCatLongformCarry",
+   "pos": [
+    3330,
+    640
+   ],
+   "size": [
+    460,
+    190
+   ],
+   "flags": {},
+   "order": 25,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "portrait",
+     "name": "portrait",
+     "type": "IMAGE",
+     "link": 12
+    },
+    {
+     "localized_name": "portrait_latent",
+     "name": "portrait_latent",
+     "type": "LATENT",
+     "link": 13
+    },
+    {
+     "localized_name": "end_latent",
+     "name": "end_latent",
+     "type": "LATENT",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "session",
+     "name": "session",
+     "type": "STRING",
+     "link": 42,
+     "shape": 7
+    },
+    {
+     "localized_name": "chunk_index",
+     "name": "chunk_index",
+     "type": "INT",
+     "link": 14,
+     "widget": {
+      "name": "chunk_index"
+     }
+    },
+    {
+     "localized_name": "use_end_image",
+     "name": "use_end_image",
+     "type": "BOOLEAN",
+     "link": 15,
+     "widget": {
+      "name": "use_end_image"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "prev_images",
+     "name": "prev_images",
+     "type": "IMAGE",
+     "links": [
+      22
+     ]
+    },
+    {
+     "localized_name": "ref_latent",
+     "name": "ref_latent",
+     "type": "LATENT",
+     "links": [
+      21
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformCarry",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Opening + Reference",
+   "widgets_values": [
+    0,
+    false
+   ]
+  },
+  {
+   "id": 55,
+   "type": "LongCatAvatarWhisperEmbeds",
+   "pos": [
+    3330,
+    880
+   ],
+   "size": [
+    460,
+    300
+   ],
+   "flags": {},
+   "order": 26,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "whisper_model",
+     "name": "whisper_model",
+     "type": "WHISPERMODEL",
+     "link": 16
+    },
+    {
+     "localized_name": "audio_1",
+     "name": "audio_1",
+     "type": "AUDIO",
+     "link": 17
+    },
+    {
+     "localized_name": "audio_2",
+     "name": "audio_2",
+     "type": "AUDIO",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "audio_3",
+     "name": "audio_3",
+     "type": "AUDIO",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "audio_4",
+     "name": "audio_4",
+     "type": "AUDIO",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "ref_target_masks",
+     "name": "ref_target_masks",
+     "type": "MASK",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "num_frames",
+     "name": "num_frames",
+     "type": "INT",
+     "link": 18,
+     "widget": {
+      "name": "num_frames"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "multitalk_embeds",
+     "name": "multitalk_embeds",
+     "type": "MULTITALK_EMBEDS",
+     "links": [
+      20
+     ]
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "type": "AUDIO",
+     "links": []
+    },
+    {
+     "localized_name": "num_frames",
+     "name": "num_frames",
+     "type": "INT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatAvatarWhisperEmbeds",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Whisper Embeds (window audio, 25 fps)",
+   "widgets_values": [
+    false,
+    194,
+    25.0,
+    1.0,
+    1.0,
+    "para"
+   ]
+  },
+  {
+   "id": 56,
+   "type": "WanVideoLongCatAvatarExtendEmbeds",
+   "pos": [
+    3330,
+    1230
+   ],
+   "size": [
+    460,
+    330
+   ],
+   "flags": {},
+   "order": 27,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "prev_latents",
+     "name": "prev_latents",
+     "type": "LATENT",
+     "link": 19
+    },
+    {
+     "localized_name": "audio_embeds",
+     "name": "audio_embeds",
+     "type": "MULTITALK_EMBEDS",
+     "link": 20
+    },
+    {
+     "localized_name": "ref_latent",
+     "name": "ref_latent",
+     "type": "LATENT",
+     "link": 21,
+     "shape": 7
+    },
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "prev_images",
+     "name": "prev_images",
+     "type": "IMAGE",
+     "link": 22,
+     "shape": 7
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "WANVAE",
+     "link": 23,
+     "shape": 7
+    },
+    {
+     "localized_name": "num_frames",
+     "name": "num_frames",
+     "type": "INT",
+     "link": 24,
+     "widget": {
+      "name": "num_frames"
+     }
+    },
+    {
+     "localized_name": "overlap",
+     "name": "overlap",
+     "type": "INT",
+     "link": 25,
+     "widget": {
+      "name": "overlap"
+     }
+    },
+    {
+     "localized_name": "frames_processed",
+     "name": "frames_processed",
+     "type": "INT",
+     "link": 26,
+     "widget": {
+      "name": "frames_processed"
+     }
+    },
+    {
+     "localized_name": "ref_frame_index",
+     "name": "ref_frame_index",
+     "type": "INT",
+     "link": 27,
+     "widget": {
+      "name": "ref_frame_index"
+     }
+    },
+    {
+     "localized_name": "ref_mask_frame_range",
+     "name": "ref_mask_frame_range",
+     "type": "INT",
+     "link": 28,
+     "widget": {
+      "name": "ref_mask_frame_range"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "image_embeds",
+     "name": "image_embeds",
+     "type": "WANVIDIMAGE_EMBEDS",
+     "links": [
+      30
+     ]
+    },
+    {
+     "localized_name": "samples_slice",
+     "name": "samples_slice",
+     "type": "LATENT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoLongCatAvatarExtendEmbeds",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "LongCat Extend Embeds (opening + audio + reference)",
+   "widgets_values": [
+    93,
+    1,
+    1,
+    "pad_with_start",
+    10,
+    3
+   ]
+  },
+  {
+   "id": 60,
+   "type": "WanVideoSamplerv2",
+   "pos": [
+    3990,
+    120
+   ],
+   "size": [
+    460,
+    250
+   ],
+   "flags": {},
+   "order": 28,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "WANVIDEOMODEL",
+     "link": 29
+    },
+    {
+     "localized_name": "image_embeds",
+     "name": "image_embeds",
+     "type": "WANVIDIMAGE_EMBEDS",
+     "link": 30
+    },
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "type": "WANVIDEOSCHEDULER",
+     "link": 31
+    },
+    {
+     "localized_name": "text_embeds",
+     "name": "text_embeds",
+     "type": "WANVIDEOTEXTEMBEDS",
+     "link": 32,
+     "shape": 7
+    },
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": null,
+     "shape": 7
+    },
+    {
+     "localized_name": "extra_args",
+     "name": "extra_args",
+     "type": "WANVIDSAMPLEREXTRAARGS",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "links": [
+      33
+     ]
+    },
+    {
+     "localized_name": "denoised_samples",
+     "name": "denoised_samples",
+     "type": "LATENT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoSamplerv2",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Sampler (cfg 1, fixed seed)",
+   "widgets_values": [
+    1.0,
+    42,
+    "fixed",
+    true,
+    false
+   ]
+  },
+  {
+   "id": 61,
+   "type": "WanVideoDecode",
+   "pos": [
+    3990,
+    420
+   ],
+   "size": [
+    460,
+    250
+   ],
+   "flags": {},
+   "order": 29,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "WANVAE",
+     "link": 34
+    },
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": 33
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": [
+      35
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVideoDecode",
+    "cnr_id": "comfyui-wanvideowrapper",
+    "aux_id": "kijai/ComfyUI-WanVideoWrapper",
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
+   },
+   "title": "Decode",
+   "widgets_values": [
+    false,
+    272,
+    272,
+    144,
+    128,
+    "default"
+   ]
+  },
+  {
+   "id": 70,
+   "type": "LongCatLongformWrite",
+   "pos": [
+    4650,
+    120
+   ],
+   "size": [
+    460,
+    340
+   ],
+   "flags": {},
+   "order": 30,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 35
+    },
+    {
+     "localized_name": "original_audio",
+     "name": "original_audio",
+     "type": "AUDIO",
+     "link": 2
+    },
+    {
+     "localized_name": "chunk_audio",
+     "name": "chunk_audio",
+     "type": "AUDIO",
+     "link": 36,
+     "shape": 7
+    },
+    {
+     "localized_name": "chunk_index",
+     "name": "chunk_index",
+     "type": "INT",
+     "link": 37,
+     "widget": {
+      "name": "chunk_index"
+     }
+    },
+    {
+     "localized_name": "total_chunks",
+     "name": "total_chunks",
+     "type": "INT",
+     "link": 38,
+     "widget": {
+      "name": "total_chunks"
+     }
+    },
+    {
+     "localized_name": "keep_frames",
+     "name": "keep_frames",
+     "type": "INT",
+     "link": 39,
+     "widget": {
+      "name": "keep_frames"
+     }
+    },
+    {
+     "localized_name": "session",
+     "name": "session",
+     "type": "STRING",
+     "link": 43,
+     "widget": {
+      "name": "session"
+     }
+    },
+    {
+     "localized_name": "filename",
+     "name": "filename",
+     "type": "STRING",
+     "link": 44,
+     "widget": {
+      "name": "filename"
+     }
+    },
+    {
+     "localized_name": "trim_start",
+     "name": "trim_start",
+     "type": "INT",
+     "link": 40,
+     "widget": {
+      "name": "trim_start"
+     },
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "status",
+     "name": "status",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LongCatLongformWrite",
+    "cnr_id": "comfyui-longcat-longform"
+   },
+   "title": "Write chunk + stitch final video",
+   "widgets_values": [
+    0,
+    1,
+    93,
+    "batch_bf16_960",
+    "batch_bf16_960.mp4",
+    false,
+    0
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   11,
+   0,
+   20,
+   0,
+   "AUDIO"
+  ],
+  [
+   2,
+   11,
+   0,
+   70,
+   1,
+   "AUDIO"
+  ],
+  [
+   3,
+   30,
+   0,
+   57,
+   1,
+   "STRING"
+  ],
+  [
+   4,
+   42,
+   0,
+   40,
+   1,
+   "BLOCKSWAPARGS"
+  ],
+  [
+   5,
+   41,
+   0,
+   40,
+   2,
+   "WANVIDLORA"
+  ],
+  [
+   6,
+   46,
+   0,
+   47,
+   0,
+   "SIGMAS"
+  ],
+  [
+   7,
+   10,
+   0,
+   50,
+   0,
+   "IMAGE"
+  ],
+  [
+   8,
+   13,
+   0,
+   50,
+   1,
+   "INT"
+  ],
+  [
+   9,
+   14,
+   0,
+   50,
+   2,
+   "INT"
+  ],
+  [
+   10,
+   43,
+   0,
+   51,
+   0,
+   "WANVAE"
+  ],
+  [
+   11,
+   50,
+   0,
+   51,
+   1,
+   "IMAGE"
+  ],
+  [
+   12,
+   50,
+   0,
+   53,
+   0,
+   "IMAGE"
+  ],
+  [
+   13,
+   51,
+   0,
+   53,
+   1,
+   "LATENT"
+  ],
+  [
+   14,
+   20,
+   12,
+   53,
+   4,
+   "INT"
+  ],
+  [
+   15,
+   20,
+   11,
+   53,
+   5,
+   "BOOLEAN"
+  ],
+  [
+   16,
+   45,
+   0,
+   55,
+   0,
+   "WHISPERMODEL"
+  ],
+  [
+   17,
+   20,
+   1,
+   55,
+   1,
+   "AUDIO"
+  ],
+  [
+   18,
+   20,
+   2,
+   55,
+   6,
+   "INT"
+  ],
+  [
+   19,
+   51,
+   0,
+   56,
+   0,
+   "LATENT"
+  ],
+  [
+   20,
+   55,
+   0,
+   56,
+   1,
+   "MULTITALK_EMBEDS"
+  ],
+  [
+   21,
+   53,
+   1,
+   56,
+   2,
+   "LATENT"
+  ],
+  [
+   22,
+   53,
+   0,
+   56,
+   4,
+   "IMAGE"
+  ],
+  [
+   23,
+   43,
+   0,
+   56,
+   5,
+   "WANVAE"
+  ],
+  [
+   24,
+   20,
+   3,
+   56,
+   6,
+   "INT"
+  ],
+  [
+   25,
+   20,
+   4,
+   56,
+   7,
+   "INT"
+  ],
+  [
+   26,
+   20,
+   5,
+   56,
+   8,
+   "INT"
+  ],
+  [
+   27,
+   20,
+   6,
+   56,
+   9,
+   "INT"
+  ],
+  [
+   28,
+   20,
+   7,
+   56,
+   10,
+   "INT"
+  ],
+  [
+   29,
+   40,
+   0,
+   60,
+   0,
+   "WANVIDEOMODEL"
+  ],
+  [
+   30,
+   56,
+   0,
+   60,
+   1,
+   "WANVIDIMAGE_EMBEDS"
+  ],
+  [
+   31,
+   47,
+   0,
+   60,
+   2,
+   "WANVIDEOSCHEDULER"
+  ],
+  [
+   32,
+   57,
+   0,
+   60,
+   3,
+   "WANVIDEOTEXTEMBEDS"
+  ],
+  [
+   33,
+   60,
+   0,
+   61,
+   1,
+   "LATENT"
+  ],
+  [
+   34,
+   43,
+   0,
+   61,
+   0,
+   "WANVAE"
+  ],
+  [
+   35,
+   61,
+   0,
+   70,
+   0,
+   "IMAGE"
+  ],
+  [
+   36,
+   20,
+   0,
+   70,
+   2,
+   "AUDIO"
+  ],
+  [
+   37,
+   20,
+   12,
+   70,
+   3,
+   "INT"
+  ],
+  [
+   38,
+   20,
+   10,
+   70,
+   4,
+   "INT"
+  ],
+  [
+   39,
+   20,
+   9,
+   70,
+   5,
+   "INT"
+  ],
+  [
+   40,
+   20,
+   8,
+   70,
+   8,
+   "INT"
+  ],
+  [
+   41,
+   11,
+   1,
+   20,
+   1,
+   "STRING"
+  ],
+  [
+   42,
+   11,
+   1,
+   53,
+   3,
+   "STRING"
+  ],
+  [
+   43,
+   11,
+   1,
+   70,
+   6,
+   "STRING"
+  ],
+  [
+   44,
+   11,
+   2,
+   70,
+   7,
+   "STRING"
+  ]
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "1. Your inputs",
+   "bounding": [
+    660,
+    0,
+    520,
+    1170
+   ],
+   "color": "#a1309b",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 2,
+   "title": "2. Prompt (optional)",
+   "bounding": [
+    1320,
+    0,
+    520,
+    700
+   ],
+   "color": "#b06634",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 3,
+   "title": "3. Chunk plan (automatic)",
+   "bounding": [
+    1980,
+    0,
+    520,
+    550
+   ],
+   "color": "#8a8a2c",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 4,
+   "title": "4. Models (automatic)",
+   "bounding": [
+    2640,
+    0,
+    520,
+    1810
+   ],
+   "color": "#3f789e",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 5,
+   "title": "5. Opening, reference + audio",
+   "bounding": [
+    3300,
+    0,
+    520,
+    1590
+   ],
+   "color": "#4a7a4a",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 6,
+   "title": "6. Sampling",
+   "bounding": [
+    3960,
+    0,
+    520,
+    700
+   ],
+   "color": "#5a5a8a",
+   "font_size": 26,
+   "flags": {}
+  },
+  {
+   "id": 7,
+   "title": "7. Save + stitch",
+   "bounding": [
+    4620,
+    0,
+    520,
+    490
+   ],
+   "color": "#8a4a4a",
+   "font_size": 26,
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.55,
+   "offset": [
+    80,
+    80
+   ]
+  }
+ },
+ "version": 0.4
+}

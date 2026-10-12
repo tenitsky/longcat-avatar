@@ -70,7 +70,7 @@ WANVIDEO = {
 class WorkflowTests(unittest.TestCase):
     def each(self):
         for w in builder.WORKFLOWS:
-            wf = builder.build(w["variant"], w["batch"])
+            wf = builder.build(w["variant"], w["batch"], w["precision"])
             yield w, wf, {n["id"]: n for n in wf["nodes"]}
 
     def sources(self, wf, nodes):
@@ -185,7 +185,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_variant_settings(self):
         for w, wf, nodes in self.each():
-            v = builder.VARIANTS[w["variant"]]
+            v = builder.settings(w["variant"], w["precision"])
             by_type = {}
             for n in nodes.values():
                 by_type.setdefault(n["type"], []).append(n)
@@ -197,7 +197,14 @@ class WorkflowTests(unittest.TestCase):
                 for scale in by_type["ImageScale"]:
                     self.assertEqual(scale["widgets_values"][3], "center")
                 # Upstream v1.5 distilled settings: bf16, 8 steps, cfg 1, audio cfg 1.
-                self.assertEqual(nodes[40]["widgets_values"][:2], [builder.MODEL, "bf16"])
+                # The precision is in the file name, the title and the output name.
+                model = builder.MODEL_FP8 if w["precision"] == "fp8" else builder.MODEL
+                quantization = "fp8_e4m3fn" if w["precision"] == "fp8" else "disabled"
+                self.assertEqual(nodes[40]["widgets_values"][:3], [model, "bf16", quantization])
+                self.assertTrue(w["path"].startswith(f"longcat_{w['precision']}_"))
+                self.assertIn(w["precision"], nodes[40]["title"].lower())
+                self.assertIn(f" - {w['precision'].upper()} - ", v["title"])
+                self.assertTrue(v["suffix"].startswith(f"_{w['precision']}_{v['canvas']}"))
                 self.assertEqual(nodes[41]["widgets_values"][:2], [builder.LORA, 1.0])
                 self.assertEqual(nodes[47]["widgets_values"][:2], ["euler", 8])
                 self.assertEqual(nodes[60]["widgets_values"][0], 1.0)
@@ -208,8 +215,10 @@ class WorkflowTests(unittest.TestCase):
                           else nodes[21]["widgets_values"][2])
                 self.assertEqual(suffix, v["suffix"])
                 self.assertEqual(len(by_type["LoadImage"]), 2 if v["end_image"] else 1)
-        suffixes = [v["suffix"] for v in builder.VARIANTS.values()]
+        suffixes = [builder.settings(v, p)["suffix"]
+                    for v in builder.VARIANTS for p in builder.PRECISIONS]
         self.assertEqual(len(set(suffixes)), len(suffixes), "sessions must not collide")
+        self.assertEqual(len(builder.WORKFLOWS), len(builder.ORDER) * len(builder.PRECISIONS))
 
     def test_models_match_setup_downloads(self):
         downloads = re.findall(r'^download_kj "([^"]+)" (\w+)', SETUP, re.M)
@@ -224,6 +233,14 @@ class WorkflowTests(unittest.TestCase):
                 for m in node["properties"].get("models", []):
                     self.assertIn(m["name"], node["widgets_values"])
                     self.assertEqual(m["url"], builder.MODEL_URL[m["name"]])
+            if w["precision"] == "fp8":
+                self.assertNotIn("models", nodes[40]["properties"])
+        # The FP8 model is not downloaded: setup builds it from the BF16 file.
+        self.assertIn(f'FP8_MODEL="$COMFYUI_PATH/models/diffusion_models/{builder.MODEL_FP8}"',
+                      SETUP)
+        self.assertIn(f'FP8_SOURCE="$COMFYUI_PATH/models/diffusion_models/{builder.MODEL}"',
+                      SETUP)
+        self.assertIn('"$SCRIPT_DIR/tools/make_fp8.py"', SETUP)
 
     def test_layout_is_spaced_grouped_and_expanded(self):
         title = 40  # LiteGraph draws the title bar above pos

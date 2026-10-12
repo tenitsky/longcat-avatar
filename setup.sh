@@ -375,6 +375,28 @@ if [ "$FAILED" = "1" ]; then
   exit 1
 fi
 
+# FP8 copy of the LongCat model (~17 GB) for the longcat_fp8_* workflows, built once
+# from the BF16 download: the same float8_e4m3fn conversion WanVideoWrapper's
+# fp8_e4m3fn option does on load, so FP8 workflows read half the data. Uses the image's
+# PyTorch through ComfyUI's venv; streams one tensor at a time.
+FP8_SOURCE="$COMFYUI_PATH/models/diffusion_models/LongCat-Avatar-15_bf16.safetensors"
+FP8_MODEL="$COMFYUI_PATH/models/diffusion_models/LongCat-Avatar-15_fp8_e4m3fn.safetensors"
+if file_ok "$FP8_MODEL"; then
+  echo "$(basename "$FP8_MODEL") already exists, skipping."
+else
+  echo "Building the FP8 model from the BF16 download (a few minutes)..."
+  if "$VPY" "$SCRIPT_DIR/tools/make_fp8.py" "$FP8_SOURCE" "$FP8_MODEL.part" \
+      && file_ok "$FP8_MODEL.part"; then
+    mv -f "$FP8_MODEL.part" "$FP8_MODEL"
+    echo "FP8 model ready: $(basename "$FP8_MODEL")"
+  else
+    rm -f "$FP8_MODEL.part"
+    echo "FATAL: building the FP8 model failed (see above). Restart the pod to retry;"
+    echo "         the BF16 model and other downloads are kept."
+    exit 1
+  fi
+fi
+
 # 4. Install bundled workflows into ComfyUI's Workflows sidebar
 echo "Installing workflows..."
 WF_DEST="$COMFYUI_PATH/user/default/workflows"
@@ -394,6 +416,12 @@ c02021274fbe3bb5ec6aef35e18b838ff01d4677704c6d04e1c1e729051fa706 longcat_avatar_
 a5a57502909342733843872f796df2b101deee2b68aa6a3b1d5f213afe15094e longcat_avatar_return_to_portrait.json
 95cf49958e8e4116eb8f09565c1cee9ff658ac63326ce2e39cce3779cab4399d longcat_avatar_start_to_end.json
 ca1ad53684b8e5ae390fcdef8853861ef40b2f16b6e0734b97bceaa89c5ac8b1 longcat_avatar_start_to_end.json
+f093027b65345532336bad2f06daa73f9886775c14e9f0b449a0baf49589dfd3 longcat_1_fast_640.json
+5d5fcefee30fc615ac00eff2e1955861d3fff6798ab0786eabcdd7e33cdee0c1 longcat_2_high_quality_960.json
+6de60850baca973addbdafaf9f91b5b46196f3d1dec9b20b10f2c75a920c4d8e longcat_3_fast_640_batch_folder.json
+f58132330afb070245fb7b3f196fcd9639173496d40ba167c58c6149cb5b7dea longcat_4_high_quality_960_batch_folder.json
+2af3f020d2886adaac0015430e969856d3f5dbbfe73adcbfe1d92ad778e0676b longcat_5_experimental_return_to_portrait_640.json
+508bcb426816fe539712fb7a4a24bba6175fdc7aa3e217b74e6a46fcbfa7c782 longcat_6_experimental_start_to_end_image_640.json
 "
 while read -r sum name; do
   [ -n "$name" ] && [ -f "$WF_DEST/$name" ] || continue

@@ -13,7 +13,8 @@ cosmetic properties, but the wiring stays the same.
 
 Every workflow shares one graph. The variants differ only in canvas, anchor mode and
 whether there is an End Image, as set in VARIANTS. Fast and High Quality also come in
-a batch version that renders every audio file in a folder.
+a batch version that renders every audio file in a folder. Every workflow comes in a
+BF16 and an FP8 version (PRECISIONS), which differ only in the model file loaded.
 
 Model nodes come from kijai/ComfyUI-WanVideoWrapper (LongCat support lives there;
 ComfyUI has no native LongCat video nodes). Their widget order follows that pack's
@@ -45,6 +46,8 @@ MODEL_FILES = [
     (WHISPER, "audio_encoders", "HuMo/" + WHISPER),
 ]
 MODEL_URL = {name: KJ + path for name, _, path in MODEL_FILES}
+# Built from MODEL by tools/make_fp8.py at setup, not downloaded.
+MODEL_FP8 = "LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 
 ANCHOR_IDENTITY = "identity (default)"
 ANCHOR_WINDOW_END = "return to portrait (experimental)"
@@ -55,55 +58,82 @@ BYPASS = 4  # LiteGraph node mode: pass the input straight through
 
 VARIANTS = {
     "fast": dict(
-        title="LongCat Avatar - Fast (640)",
+        title="Fast (640)",
         summary="Fast preview at 640 x 640 (LongCat's 480p tier): under half the pixels "
                 "of High Quality. Check timing, lip sync and framing here, then render "
                 "the final with High Quality (960).",
-        canvas=640, anchor=ANCHOR_IDENTITY, end_image=False, suffix="_fast"),
+        canvas=640, anchor=ANCHOR_IDENTITY, end_image=False, tag=""),
     "high_quality": dict(
-        title="LongCat Avatar - High Quality (960)",
+        title="High Quality (960)",
         summary="Final quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. "
                 "Every chunk continues from the previous one's last frames, so there "
                 "are no pose resets at the joins.",
-        canvas=960, anchor=ANCHOR_IDENTITY, end_image=False, suffix=""),
+        canvas=960, anchor=ANCHOR_IDENTITY, end_image=False, tag=""),
     "return_to_portrait": dict(
-        title="LongCat Avatar - Experimental: Return to Portrait (640)",
+        title="Experimental: Return to Portrait (640)",
         summary="EXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can "
                 "place its identity reference at any point in a window. This workflow "
                 "puts the portrait on every window's last frame, pulling each 3.2 s "
                 "chunk back toward the portrait pose, the closest LongCat gets to "
                 "MiniMax H3's first/last-frame anchoring. Expect less drift over long "
                 "videos and possibly a repeating motion every chunk.",
-        canvas=640, anchor=ANCHOR_WINDOW_END, end_image=False,
-        suffix="_return_to_portrait"),
+        canvas=640, anchor=ANCHOR_WINDOW_END, end_image=False, tag="_return_to_portrait"),
     "start_to_end": dict(
-        title="LongCat Avatar - Experimental: Start Image to End Image (640)",
+        title="Experimental: Start Image to End Image (640)",
         summary="EXPERIMENTAL, 640 x 640. Starts on the Portrait and steers the final "
                 "chunk toward the End Image: same person, a different pose, expression "
                 "or framing. It is a soft pull on the last frame, not a pinned frame; "
                 "LongCat has no true end-frame input.",
-        canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, suffix="_start_to_end"),
+        canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, tag="_start_to_end"),
+}
+
+PRECISIONS = {
+    "bf16": dict(
+        label="BF16", model=MODEL, quantization="disabled",
+        loader_title="LongCat-Avatar 1.5 (bf16, full precision)",
+        summary="**BF16 model** (31.7 GB): full precision, the reference quality. Needs "
+                "an 80 GB GPU, or Block Swap below that."),
+    "fp8": dict(
+        label="FP8", model=MODEL_FP8, quantization="fp8_e4m3fn",
+        loader_title="LongCat-Avatar 1.5 (fp8 e4m3fn)",
+        summary="**FP8 model** (~17 GB), made from the BF16 file at setup: about half the "
+                "VRAM for the model weights, at a small cost in precision. Compare with "
+                "the BF16 version of this workflow."),
 }
 
 # Numbered so the Workflows sidebar lists them in the order to use them: a fast test,
 # the final render, the same two for a folder of voiceovers, then the experiments.
-WORKFLOWS = [
-    dict(variant="fast", batch=False, path="longcat_1_fast_640.json",
-         id="c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05"),
-    dict(variant="high_quality", batch=False, path="longcat_2_high_quality_960.json",
-         id="7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17"),
-    dict(variant="fast", batch=True, path="longcat_3_fast_640_batch_folder.json",
-         id="e1a7b4c9-3d62-4f15-a8e0-5b9c2d7f4e38"),
-    dict(variant="high_quality", batch=True,
-         path="longcat_4_high_quality_960_batch_folder.json",
-         id="2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264"),
-    dict(variant="return_to_portrait", batch=False,
-         path="longcat_5_experimental_return_to_portrait_640.json",
-         id="5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42"),
-    dict(variant="start_to_end", batch=False,
-         path="longcat_6_experimental_start_to_end_image_640.json",
-         id="a8f3c1d6-2b9e-4e57-8c14-7d0e6b2f9a31"),
+ORDER = [
+    ("fast", False, "1_fast_640"),
+    ("high_quality", False, "2_high_quality_960"),
+    ("fast", True, "3_fast_640_batch_folder"),
+    ("high_quality", True, "4_high_quality_960_batch_folder"),
+    ("return_to_portrait", False, "5_experimental_return_to_portrait_640"),
+    ("start_to_end", False, "6_experimental_start_to_end_image_640"),
 ]
+IDS = {
+    "bf16": ["c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05", "7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17",
+             "e1a7b4c9-3d62-4f15-a8e0-5b9c2d7f4e38", "2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264",
+             "5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42", "a8f3c1d6-2b9e-4e57-8c14-7d0e6b2f9a31"],
+    "fp8": ["4ca57a01-1f50-4ca2-a5b7-6a8d15312df3", "d8860ff8-69f7-4bc5-ac32-7d21b29166c9",
+            "5607ac0a-d36f-4b06-a93e-8c627ed8f0be", "9eb768cd-76de-4eec-a816-5d4072a7867e",
+            "cdcc91ba-011a-4221-8ebe-078d7047e496", "2b68c501-2da5-4d83-a4b4-dde3ebe8bd20"],
+}
+WORKFLOWS = [dict(variant=variant, batch=batch, precision=precision,
+                  path=f"longcat_{precision}_{name}.json", id=IDS[precision][i])
+             for precision in PRECISIONS for i, (variant, batch, name) in enumerate(ORDER)]
+
+
+def settings(variant, precision):
+    """A variant's settings for one precision. The output suffix names both, so BF16
+    and FP8 renders of the same voiceover never share (or resume) a session."""
+    v, p = VARIANTS[variant], PRECISIONS[precision]
+    return {**v, "precision": precision, "model": p["model"],
+            "quantization": p["quantization"], "loader_title": p["loader_title"],
+            "title": f"LongCat Avatar - {p['label']} - {v['title']}",
+            "summary": f"{v['summary']}\n\n{p['summary']}",
+            "suffix": f"_{precision}_{v['canvas']}{v['tag']}"}
+
 
 # ------------------------------------------------------------------------ notes
 NOTE_ABOUT = """## About LongCat-Video-Avatar 1.5
@@ -168,15 +198,32 @@ The voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 k
 Whisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."""
 
 
-NOTE_MODELS = """## 4. Models - loaded automatically
+def note_models(v):
+    if v["precision"] == "fp8":
+        model = ("- **LongCat-Avatar 1.5, FP8** (`" + MODEL_FP8 + "`, ~17 GB). Setup builds "
+                 "it once from the BF16 download: the large weights are stored as "
+                 "float8_e4m3fn, everything else stays bf16, exactly as the loader's "
+                 "`fp8_e4m3fn` option would convert the BF16 file. Computation still runs "
+                 "at bf16 base precision, which LongCat requires.")
+        low_vram = ("**Less than 48 GB of VRAM?** Select **Block Swap** and press Ctrl+B "
+                    "to enable it (20 of 48 blocks; raise it if you still run out).")
+    else:
+        model = ("- **LongCat-Avatar 1.5, BF16** (`" + MODEL + "`, 31.7 GB): full "
+                 "precision. LongCat only runs at bf16 base precision.")
+        low_vram = ("**Less than 80 GB of VRAM?** Use the **FP8** version of this "
+                    "workflow, and/or select **Block Swap** and press Ctrl+B to enable it "
+                    "(20 of 48 blocks).")
+    return f"""## 4. Models - loaded automatically
 
 Nothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).
 
-- **LongCat-Avatar 1.5**, bf16 (LongCat only runs at bf16 base precision), with the **DMD distill LoRA**: 8 steps, cfg 1.
+{model}
+- **DMD distill LoRA**: 8 steps, cfg 1.
 - **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.
 - **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.
 
-**Less than 80 GB of VRAM?** Select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks), and/or set the model loader's `quantization` to `fp8_e4m3fn`. Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."""
+{low_vram} Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."""
+
 
 NOTE_GUIDE = """## 5. Portrait, opening and audio guidance
 
@@ -190,7 +237,7 @@ NOTE_SAMPLING = """## 6. Sampling + decode
 
 Fixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.
 
-Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the Fast (640) workflow."""
+Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."""
 
 
 def note_output(batch):
@@ -355,9 +402,10 @@ SPLIT_OUTPUTS = [("audio_chunk", "AUDIO"), ("whisper_audio", "AUDIO"),
                  ("use_end_image", "BOOLEAN"), ("chunk_index", "INT")]
 
 
-def build(variant="high_quality", batch=False):
-    v = VARIANTS[variant]
-    w = next(w for w in WORKFLOWS if w["variant"] == variant and w["batch"] == batch)
+def build(variant="high_quality", batch=False, precision="bf16"):
+    v = settings(variant, precision)
+    w = next(w for w in WORKFLOWS if w["variant"] == variant and w["batch"] == batch
+             and w["precision"] == precision)
     g = Graph()
     INPUT = ("#322", "#533")    # red: things you set
     W, I = True, False           # input is a widget / a plain socket
@@ -374,7 +422,7 @@ def build(variant="high_quality", batch=False):
     md(g, 3, "About stage 1", note_inputs(v), (COLUMN_W, 520 if v["end_image"] else 440))
     md(g, 4, "About stage 2", NOTE_PROMPT, (COLUMN_W, 420))
     md(g, 5, "About stage 3", note_plan(v), (COLUMN_W, 600))
-    md(g, 6, "About stage 4", NOTE_MODELS, (COLUMN_W, 520))
+    md(g, 6, "About stage 4", note_models(v), (COLUMN_W, 600))
     md(g, 7, "About stage 5", NOTE_GUIDE, (COLUMN_W, 380))
     md(g, 8, "About stage 6", NOTE_SAMPLING, (COLUMN_W, 260))
     md(g, 9, "About stage 7", note_output(batch), (COLUMN_W, 400))
@@ -452,8 +500,11 @@ def build(variant="high_quality", batch=False):
                    ("multitalk_model", "MULTITALKMODEL", I, True),
                    ("fantasyportrait_model", "FANTASYPORTRAITMODEL", I, True)],
            outputs=[("model", "WANVIDEOMODEL")],
-           widgets=[MODEL, "bf16", "disabled", "offload_device", "sdpa", "default"],
-           title="LongCat-Avatar 1.5 (bf16)", models=[(MODEL, "diffusion_models")],
+           widgets=[v["model"], "bf16", v["quantization"], "offload_device", "sdpa",
+                    "default"],
+           title=v["loader_title"],
+           # The FP8 file is built at setup, so it has no download link.
+           models=[(MODEL, "diffusion_models")] if v["model"] == MODEL else None,
            cnr=WV, size=size(330))
     g.node(43, "WanVideoVAELoader", inputs=[("compile_args", "WANCOMPILEARGS", I, True)],
            outputs=[("vae", "WANVAE")], widgets=[VAE, "bf16", False, False],
@@ -645,7 +696,7 @@ def build(variant="high_quality", batch=False):
 
 if __name__ == "__main__":
     for w in WORKFLOWS:
-        wf = build(w["variant"], w["batch"])
+        wf = build(w["variant"], w["batch"], w["precision"])
         path = os.path.join(WORKFLOW_DIR, w["path"])
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(wf, f, indent=1, ensure_ascii=False)

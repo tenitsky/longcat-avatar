@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import build_workflow as builder  # noqa: E402
 
 MODEL_NAMES = {name for name, _, _ in builder.MODEL_FILES}
+FP8_MODEL = "diffusion_models/" + builder.MODEL_FP8
 
 
 @unittest.skipUnless(sys.platform.startswith("linux") and BASH, "Linux Bash integration fixture")
@@ -243,7 +244,11 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         self.assertEqual(len(self.lines(self.download_log)), 5)
         for name, folder, _ in builder.MODEL_FILES:
             self.assertTrue((self.comfy / "models" / folder / name).is_file(), name)
-        self.assertEqual({p.name for p in (self.comfy / "models").rglob("*.safetensors")}, MODEL_NAMES)
+        # The FP8 model is built from the BF16 download, not downloaded.
+        self.assertTrue((self.comfy / "models" / FP8_MODEL).is_file())
+        self.assertIn("FP8 model ready", first.stdout)
+        self.assertEqual({p.name for p in (self.comfy / "models").rglob("*.safetensors")},
+                         MODEL_NAMES | {builder.MODEL_FP8})
         # Nodes: the bundled pack and the wrapper at the pinned commit.
         self.assertTrue((self.comfy / "custom_nodes/comfyui-longcat-longform/__init__.py").is_file())
         self.assertEqual((self.wrapper / ".git/HEAD_SHA").read_text().strip(), builder.WANVIDEO_REF)
@@ -255,7 +260,7 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         self.assertIn(f"-c {self.constraints}", pip[0])
         self.assertIn(f"-r {self.wrapper}/requirements.txt", pip[0])
         self.assertTrue((venv / ".longcat-avatar-wrapper-deps").is_file())
-        # Workflows: all six in the sidebar folder.
+        # Workflows: all twelve in the sidebar folder.
         sidebar = self.comfy / "user/default/workflows"
         for w in builder.WORKFLOWS:
             self.assertEqual(json.loads((sidebar / w["path"]).read_text()),
@@ -286,6 +291,7 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         self.assertEqual(len(self.lines(self.download_log)), 5, "models must not download again")
         self.assertEqual(len(self.lines(self.pip_log)), 1, "packages must not reinstall")
         self.assertIn("already installed", restart.stdout)
+        self.assertIn(f"{builder.MODEL_FP8} already exists", restart.stdout)
         new_git = self.lines(self.git_log)[git_calls:]
         self.assertFalse([c for c in new_git if " fetch " in f" {c} "], new_git)
         self.assertEqual(edited.read_text(), '{"edited_by_user": true}\n')
