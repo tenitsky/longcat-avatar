@@ -141,10 +141,14 @@ HF_TOKEN=
 #   sample_voiceover.mp3     71 s voiceover (about 22 chunks)
 
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
-#   longcat_bf16_return_to_portrait_640   BF16 model, Block Swap off (80 GB GPUs)
-#   longcat_fp8_return_to_portrait_640    FP8 model, Block Swap on (32-48 GB GPUs)
-# Both: portrait pulled back into every chunk, plus a full restart from the portrait
-# every 30-40 s at a pause in the voiceover (restart_min/max_seconds on Split).
+#   longcat_bf16_1_single_audio_640x640   one voiceover, 640x640
+#   longcat_bf16_2_batch_audio_640x640    every voiceover in input/batch_audio, 640x640
+#   longcat_bf16_3_single_audio_960x960   one voiceover, 960x960 (high quality)
+#   longcat_bf16_4_batch_audio_960x960    every voiceover in input/batch_audio, 960x960
+#   longcat_fp8_...                       the same four with the FP8 model
+# BF16: Block Swap off (80 GB GPUs). FP8: Block Swap on (32-48 GB GPUs).
+# All: portrait pulled back into every chunk, plus a full restart from the portrait
+# every 20-40 s in the middle of a real pause (0.4 s+), planned up front.
 
 
 # ------------------------------------------------------------------------------

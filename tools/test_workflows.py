@@ -201,12 +201,15 @@ class WorkflowTests(unittest.TestCase):
             for n in nodes.values():
                 by_type.setdefault(n["type"], []).append(n)
             with self.subTest(workflow=w["path"]):
-                # Return to portrait, with a restart from the portrait every 30-40 s.
+                # Return to portrait, with a restart from the portrait every 20-40 s,
+                # in a real pause of 0.4 s or more.
                 self.assertEqual(nodes[20]["widgets_values"],
-                                 [v["anchor"], builder.RESTART_MIN, builder.RESTART_MAX])
-                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX), (30.0, 40.0))
-                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX),
-                                 (lc.RESTART_MIN, lc.RESTART_MAX))
+                                 [v["anchor"], builder.RESTART_MIN, builder.RESTART_MAX,
+                                  builder.MIN_PAUSE])
+                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX,
+                                  builder.MIN_PAUSE), (20.0, 40.0, 0.4))
+                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX, builder.MIN_PAUSE),
+                                 (lc.RESTART_MIN, lc.RESTART_MAX, lc.MIN_PAUSE))
                 self.assertEqual(v["anchor"], lc.ANCHOR_WINDOW_END)
                 self.assertEqual(nodes[13]["widgets_values"][0], v["canvas"])
                 self.assertEqual(nodes[14]["widgets_values"][0], v["canvas"])
@@ -220,7 +223,12 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(nodes[40]["widgets_values"][:3], [model, "bf16", quantization])
                 self.assertTrue(w["path"].startswith(f"longcat_{w['precision']}_"))
                 self.assertIn(w["precision"], nodes[40]["title"].lower())
-                self.assertIn(f" - {w['precision'].upper()} - ", v["title"])
+                self.assertTrue(v["title"].startswith(f"LongCat {w['precision'].upper()} - "))
+                # Names say what they are: precision, single or batch audio, canvas.
+                kind = "batch_audio" if w["batch"] else "single_audio"
+                self.assertTrue(w["path"].endswith(
+                    f"_{kind}_{v['canvas']}x{v['canvas']}.json"), w["path"])
+                self.assertNotIn("portrait", w["path"])
                 self.assertTrue(v["suffix"].startswith(f"_{w['precision']}_{v['canvas']}"))
                 self.assertEqual(nodes[41]["widgets_values"][:2], [builder.LORA, 1.0])
                 self.assertEqual(nodes[47]["widgets_values"][:2], ["euler", 8])
@@ -245,6 +253,11 @@ class WorkflowTests(unittest.TestCase):
                     for v in builder.VARIANTS for p in builder.PRECISIONS]
         self.assertEqual(len(set(suffixes)), len(suffixes), "sessions must not collide")
         self.assertEqual(len(builder.WORKFLOWS), len(builder.ORDER) * len(builder.PRECISIONS))
+        # Single and batch, at 640 and 960, for BF16 and FP8.
+        self.assertEqual(sorted((w["precision"], w["batch"], builder.VARIANTS[w["variant"]]["canvas"])
+                                for w in builder.WORKFLOWS),
+                         sorted((p, b, c) for p in ("bf16", "fp8") for b in (False, True)
+                                for c in (640, 960)))
 
     def test_models_match_setup_downloads(self):
         downloads = re.findall(r'^download_kj "([^"]+)" (\w+)', SETUP, re.M)

@@ -1,9 +1,9 @@
 # LongCat-Video-Avatar 1.5: RunPod ComfyUI template (long-form talking avatar)
 
 A one-shot template that installs **LongCat-Video-Avatar 1.5** (Meituan, MIT licence)
-on RunPod with ComfyUI and JupyterLab. Its **Return to Portrait** workflow turns **one
-portrait and a voiceover of any length** into a talking-head video, rendered in chunks
-and stitched with your original audio. It is the same approach as the MiniMax H3 template, rebuilt
+on RunPod with ComfyUI and JupyterLab. Its workflows turn **one portrait and a
+voiceover of any length** (or a folder of voiceovers) into a talking-head video,
+rendered in chunks and stitched with your original audio. It is the same approach as the MiniMax H3 template, rebuilt
 around LongCat's video continuation.
 
 ComfyUI has no native LongCat video nodes. The model runs through
@@ -25,26 +25,42 @@ pinned to a known commit, plus a small bundled node pack that plans the chunks.
 Because every chunk continues from the one before, **joins are seamless**: there is no
 pose reset every few seconds. The price is that chunks must render **in order**, a
 7-minute voiceover is about 130 chunks, and continuation **drifts** over long videos,
-which the workflow counters with a restart from the portrait every 30-40 s.
+which the workflows counter with a restart from the portrait at a pause every
+20-40 s.
 
-### Return to Portrait, and restarts against drift
+### Pulling back to the portrait, and restarts against drift
 
 LongCat has no end-frame input: its code takes conditioning latents only at the start
 of a window. There is one lever: the identity **reference** has a time position inside
-the window (`ref_frame_index`; upstream uses 10). **Return to Portrait** moves it to
-each window's last frame, with no attention mask, which draws every chunk back toward
-the portrait pose. In testing it kept the face together best.
+the window (`ref_frame_index`; upstream uses 10). The workflows move it to each
+window's last frame (the Split node's `return to portrait` anchor), with no attention
+mask, which draws every chunk back toward the portrait pose. In testing it kept the
+face together best.
 
 Continuation still drifts over long videos: small noise in the 13 carried frames grows
-from chunk to chunk. So the workflow **restarts from the portrait** once in every
-**30-40 s** (about every 10 chunks): it finds the quietest moment of the voiceover in
-that range, a pause, and the chunk starting there opens on the portrait itself, exactly
-as the first chunk does, instead of on the previous frames. That is a full refresh of
-the face. It costs a small jump at that pause, once every 30-40 s.
+from chunk to chunk. So the workflows **restart from the portrait** once in every
+**20-40 s**: the chunk starting there opens on the portrait itself, exactly as the first
+chunk does, instead of on the previous frames. That is a full refresh of the face.
 
-The range is `restart_min_seconds` / `restart_max_seconds` on the **Split** node;
-`restart_max_seconds = 0` turns restarts off. The first chunk's log line lists every
-restart point.
+The restarts are **planned from the whole voiceover before rendering starts**, and only
+go where the mouth is shut:
+
+1. Every **real pause** is found first: at least `min_pause_seconds` (**0.4 s**) of
+   near-silence, measured against the recording's own speech and noise levels. Short
+   gaps between words do not count.
+2. Each restart goes **in the middle of the longest real pause** 20-40 s after the
+   previous one, so it is silent on both sides of the cut.
+3. If that window has no real pause, the **next real pause within 20 s** is used rather
+   than cutting into speech. Only when there is none at all does a shorter gap get it
+   (flagged in the plan).
+
+The plan (time, pause length, how it was chosen) is printed in the log on the first
+chunk and saved as `output/longcat_longform/<name>/restart_plan.txt`. On the 71 s sample
+voiceover, whose pauses between 20 and 40 s are all under 0.4 s, the single restart
+lands at 51.2 s, in the middle of a 0.44 s pause.
+
+`restart_min_seconds`, `restart_max_seconds` and `min_pause_seconds` are on the **Split**
+node; `restart_max_seconds = 0` turns restarts off.
 
 ## What boots
 
@@ -63,7 +79,7 @@ On first pod boot, `setup.sh`:
 6. Builds the **FP8 model** from the BF16 download (`tools/make_fp8.py`, once, a few
    minutes)
 7. Copies the sample portrait and voiceover into `ComfyUI/input/` (never over a file
-   of the same name) and installs the two workflows (BF16 and FP8) into ComfyUI's
+   of the same name) and installs the eight workflows (BF16 and FP8) into ComfyUI's
    **Workflows** sidebar
 8. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
 
@@ -186,9 +202,9 @@ For the first launch, check the logs for **`Network Volume workspace ready at
 ## After it boots
 
 1. Open ComfyUI (port 8188), open the **Workflows** sidebar and choose
-   **`longcat_bf16_return_to_portrait_640`** (80 GB GPUs) or
-   **`longcat_fp8_return_to_portrait_640`** (32-48 GB GPUs).
-2. Set **Load Portrait** and **Load Voiceover**. Both workflows open on the bundled
+   **`longcat_bf16_1_single_audio_640x640`** (80 GB GPUs) or
+   **`longcat_fp8_1_single_audio_640x640`** (32-48 GB GPUs).
+2. Set **Load Portrait** and **Load Voiceover**. The workflows open on the bundled
    samples (`sample_portrait.png`, `sample_voiceover.mp3`, 71 s), so the first run needs
    no uploads. The output is named after the audio file automatically.
 3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
@@ -218,23 +234,40 @@ output-name node, or delete its folder under `output/longcat_longform/`.
 
 ### Workflows
 
-| Workflow | Model | Block Swap | For |
-|---|---|---|---|
-| `longcat_bf16_return_to_portrait_640` | BF16 (full precision) | off | 80 GB GPUs |
-| `longcat_fp8_return_to_portrait_640` | FP8 (built at setup) | on, 20 of 48 blocks | 32-48 GB GPUs |
+| Workflow (`longcat_bf16_…` / `longcat_fp8_…`) | Audio | Canvas |
+|---|---|---|
+| `1_single_audio_640x640` | one voiceover | 640 × 640 |
+| `2_batch_audio_640x640` | every voiceover in `input/batch_audio/` | 640 × 640 |
+| `3_single_audio_960x960` | one voiceover | 960 × 960, high quality |
+| `4_batch_audio_960x960` | every voiceover in `input/batch_audio/` | 960 × 960, high quality |
 
-Both render 640 × 640 with the Return to Portrait anchor and a restart from the
-portrait every 30-40 s; the graphs are otherwise identical. Videos are saved as
-`output/<audio name>_bf16_640_return_to_portrait.mp4` (or `_fp8_…`), so a BF16 and an
-FP8 render of the same voiceover sit side by side and never resume each other's chunks.
+**BF16** loads the full-precision model with Block Swap off (80 GB GPUs); **FP8** loads
+the FP8 model with Block Swap on, 20 of 48 blocks (32-48 GB GPUs). 960 × 960 takes about
+2.3 times as long per chunk as 640. Every workflow pulls each chunk back toward the
+portrait and restarts from it at a real pause every 20-40 s.
 
-For 960 × 960, set **Width** and **Height** to 960 and give `name_suffix` a new value;
-it takes about 2.3 times as long per chunk. Canvas sizes are multiples of 16; LongCat's
-tiers are 480p (640², 832 × 480, 480 × 832) and 720p (960², 1280 × 768, 768 × 1280).
+Videos are saved as `output/<audio name>_bf16_640.mp4` (or `_fp8_960`, …), so renders of
+the same voiceover at another precision or size sit side by side and never resume each
+other's chunks.
 
 The graph is laid out in seven numbered, coloured stages from left to right (inputs,
 prompt, chunk plan, models, opening and guidance, sampling, save), with a note under each
 stage and a **Start here** note on the far left. Red nodes are the ones you set.
+
+### Batch: a folder of voiceovers
+
+1. Put the voiceovers in `ComfyUI/input/batch_audio/` (created at boot). Upload them with
+   JupyterLab (port 8888). Accepted: `.wav`, `.mp3`, `.flac`, `.m4a`, `.aac`, `.ogg`,
+   `.opus`.
+2. Open a `batch_audio` workflow and set the portrait (and the optional prompt). The same
+   portrait and prompt are used for every file.
+3. Test with batch count 1, then queue a large batch count: roughly the total seconds of
+   all files ÷ 3.2, plus a margin.
+
+Each queue item takes the first file, in name order (`2` before `10`), whose video isn't
+finished, and renders its next unfinished chunk; each file gets its own restart plan.
+When every file is done, the **Audio From Folder** node clears the queue. Files added
+later are picked up on the next run.
 
 ### How the workflow works
 
@@ -242,11 +275,11 @@ stage and a **Start here** note on the far left. Red nodes are the ones you set.
   **Every later chunk** opens on the previous chunk's last 13 written frames, re-encoded
   through the VAE the way v1.5 does it, and keeps the 80 new frames after them. Nothing
   plays twice. The 13-frame tails are kept under `.carry/` for resume.
-- **A restart** (every 30-40 s, at a pause) is a chunk that opens on the portrait again
-  and keeps up to a whole window, exactly like chunk 1. The chunk before it simply ends
-  at the pause, however short that makes it.
+- **A restart** (every 20-40 s, in the middle of a real pause) is a chunk that opens on
+  the portrait again and keeps up to a whole window, exactly like chunk 1. The chunk
+  before it simply ends in the pause, however short that makes it.
 - On every continuing chunk, the portrait is also the **identity reference**, on the
-  window's last frame (Return to Portrait).
+  window's last frame.
 - **Audio.** The whole voiceover is normalised to -23 LUFS once, as upstream does, then
   each window gets its own 16 kHz slice with 2 s of context either side for Whisper.
   That keeps loudness constant across chunks and avoids the Whisper node's 400 s limit.
@@ -298,7 +331,8 @@ Verified without a GPU: every WanVideoWrapper node's widget order and sockets ag
 wrapper's source at the pinned commit; the chunk plan against upstream's segment
 arithmetic; the v1.5 sigma schedule against upstream's pipeline code; audio slicing and
 the Whisper frame count; continuation tails, trimming and stitching with real ffmpeg
-(frame-exact across every join and restart); the restart planner on synthetic pauses;
+(frame-exact across every join and restart); the restart planner on synthetic speech
+(real pauses chosen over short gaps, cuts mid-pause) and on the sample voiceover;
 resume, batch folders, and a full first boot and reboot
 of `setup.sh` against an offline image fixture.
 
@@ -326,7 +360,7 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
 ├── samples/                               # sample portrait + 71 s voiceover the workflows open on
-└── workflows/                             # the two workflows listed above
+└── workflows/                             # the eight workflows listed above
 ```
 
 ## References

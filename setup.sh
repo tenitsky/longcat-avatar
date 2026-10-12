@@ -458,6 +458,8 @@ eb89937148302ae62123fe3a7a6aecb95533b8b085e878430ea56b52f8cea40e longcat_fp8_2_h
 113ee947a958268c3eeb40bb859c84b022543530536f3500df7317dda18f76dd longcat_fp8_4_high_quality_960_batch_folder.json
 255031a52b5a13625fd436310602c1b743c17f574db25e2b637c79b9d88db578 longcat_fp8_5_experimental_return_to_portrait_640.json
 c73aa3dcb087b481a22ff7d2d7ff0a32e4169308f52a297c670f1b880dd8b544 longcat_fp8_6_experimental_start_to_end_image_640.json
+d8ec0379a731732b3e6a66c80dd90f79d695f6147d0f0401c769b570d02763ab longcat_bf16_return_to_portrait_640.json
+5d3094ee66bbbe5dadaf2ba526447e99a1d2d91910781863762ff029d1067e3f longcat_fp8_return_to_portrait_640.json
 "
 while read -r sum name; do
   [ -n "$name" ] && [ -f "$WF_DEST/$name" ] || continue

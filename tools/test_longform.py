@@ -93,30 +93,68 @@ class PlanTests(unittest.TestCase):
                          [(0, 93, True), (93, 80, False), (173, 27, False),
                           (200, 93, True), (293, 7, False)])
 
-    def test_restarts_land_on_pauses_30_to_40_seconds_apart(self):
-        sr, seconds = 16000, 140
-        rng = np.random.default_rng(3)
+    @staticmethod
+    def talk(seconds, pauses, sr=16000, gap_every=2.0, gap=0.2, seed=3):
+        """Speech-like noise with a 0.2 s gap between 'phrases' every 2 s (too short to
+        be a real pause) and the given (start, length) real pauses."""
+        rng = np.random.default_rng(seed)
         wave = rng.standard_normal(sr * seconds).astype(np.float32) * 0.1
-        pauses = [(33.0, 33.6), (38.0, 38.4), (71.2, 71.9), (108.0, 108.5)]
-        for a, b in pauses:   # silent gaps the planner should pick
-            wave[int(a * sr):int(b * sr)] *= 0.001
-        total = seconds * 25
-        restarts = lc.plan_restarts(wave, total)
-        self.assertEqual(lc.RESTART_MIN, 30.0)
-        self.assertEqual(lc.RESTART_MAX, 40.0)
+        t = gap_every
+        while t < seconds:
+            wave[int(t * sr):int((t + gap) * sr)] *= 0.001
+            t += gap_every
+        for start, length in pauses:
+            wave[int(start * sr):int((start + length) * sr)] *= 0.001
+        return wave
+
+    def test_restarts_go_in_the_middle_of_the_longest_real_pause_20_to_40_s_apart(self):
+        self.assertEqual((lc.RESTART_MIN, lc.RESTART_MAX, lc.MIN_PAUSE), (20.0, 40.0, 0.4))
+        pauses = [(27.1, 0.6), (33.1, 0.9), (70.1, 0.6), (105.1, 0.6)]
+        wave = self.talk(125, pauses)   # 125 s: a fourth window would start too late
+        total = 125 * 25
+        plan = lc.plan_restarts(wave, total, details=True)
+        # The longest real pause in [20, 40] s is the 0.9 s one at 33.1 s, not 27.1 s;
+        # each cut sits in the middle of its pause.
+        self.assertEqual(len(plan), 3)
+        for (frame, _, _), mid in zip(plan, (33.55, 70.4, 105.4)):
+            self.assertAlmostEqual(frame / 25, mid, delta=0.1)
         last = 0
-        for r in restarts:
-            self.assertTrue(30 * 25 <= r - last <= 40 * 25, (r, last))
-            self.assertTrue(any(a * 25 <= r <= b * 25 for a, b in pauses), r / 25)
-            last = r
-        self.assertEqual(len(restarts), 3)  # 33, 71, 108 s; none in the last 3 s
-        self.assertLess(restarts[-1], total - lc.RESTART_TAIL)
-        self.assertEqual(lc.plan_restarts(wave, total, 30, 0), [])     # off
-        self.assertEqual(lc.plan_restarts(wave, 25 * 25), [])          # under 30 s
-        # No pause at all: still restarts, inside the window.
-        loud = rng.standard_normal(sr * 90).astype(np.float32) * 0.1
-        for r in lc.plan_restarts(loud, 90 * 25):
-            self.assertTrue(30 * 25 <= r <= 40 * 25 or r > 40 * 25)
+        for frame, length, how in plan:
+            self.assertEqual(how, "pause")
+            self.assertGreaterEqual(length, 0.4)
+            self.assertTrue(any(a * 25 < frame < (a + l) * 25 for a, l in pauses), frame)
+            self.assertTrue(20 * 25 <= frame - last <= 40 * 25)
+            last = frame
+        self.assertLess(plan[-1][0], total - lc.RESTART_TAIL)
+        # Never inside the short gaps between phrases while real pauses exist.
+        self.assertEqual(lc.plan_restarts(wave, total, 20, 0), [])          # off
+        self.assertEqual(lc.plan_restarts(wave[:19 * 16000], 19 * 25), [])  # too short
+
+    def test_without_a_real_pause_in_the_window_the_next_one_is_used(self):
+        wave = self.talk(90, [(51.0, 0.5)])
+        plan = lc.plan_restarts(wave, 90 * 25, details=True)
+        self.assertEqual(plan[0][2], "pause after the window")
+        self.assertTrue(51.0 * 25 < plan[0][0] < 51.5 * 25)
+
+    def test_fallbacks_when_the_speech_never_pauses_long(self):
+        # Only the 0.2 s gaps: the longest of those in the window, flagged.
+        plan = lc.plan_restarts(self.talk(70, []), 70 * 25, details=True)
+        self.assertTrue(plan)
+        self.assertTrue(all(how == "short gap" for _, _, how in plan))
+        # No gap at all: the quietest frame, still inside the window.
+        rng = np.random.default_rng(1)
+        loud = rng.standard_normal(16000 * 70).astype(np.float32) * 0.1
+        plan = lc.plan_restarts(loud, 70 * 25, details=True)
+        self.assertTrue(plan)
+        self.assertTrue(all(20 * 25 <= f <= 40 * 25 or how != "no gap: quietest frame"
+                            for f, _, how in plan[:1]))
+
+    def test_pause_detection_adapts_to_the_recording_level(self):
+        for gain in (1.0, 0.05):   # a loud and a very quiet recording
+            wave = self.talk(30, [(12.0, 0.8)]) * gain
+            long_ones = [(a, b) for a, b in lc.find_pauses(wave, 30 * 25) if b - a >= 10]
+            self.assertEqual(len(long_ones), 1, gain)
+            self.assertAlmostEqual(long_ones[0][0] / 25, 12.0, delta=0.08)
 
     def test_reference_positions(self):
         self.assertEqual(lc.ref_settings(lc.ANCHOR_IDENTITY, 13, 80), (10, 3))
@@ -293,7 +331,8 @@ class RenderTests(unittest.TestCase):
                           "-show_entries", "stream=nb_read_frames")
         return int(info["streams"][0]["nb_read_frames"])
 
-    def item(self, audio, session, filename, anchor=lc.ANCHOR_IDENTITY, restart=(30, 40),
+    def item(self, audio, session, filename, anchor=lc.ANCHOR_IDENTITY,
+             restart=(lc.RESTART_MIN, lc.RESTART_MAX),
              batch_session=None):
         """One queue item. The 'sampler' paints each window frame with its global index
         so continuity and trimming can be checked in the written files."""
@@ -388,7 +427,7 @@ class RenderTests(unittest.TestCase):
                                            prompt={})
 
     def test_restarts_open_on_the_portrait_and_stitch_exactly(self):
-        # 75 s with restarts on: two segments restart from the portrait, every frame
+        # 75 s with restarts on: later segments restart from the portrait, every frame
         # still lands once, in order, and the video is exactly as long as the audio.
         sr, seconds = 16000, 75
         audio = speech(sr, seconds)
@@ -402,7 +441,7 @@ class RenderTests(unittest.TestCase):
                 self.assertLess(len(seen), 40)
         mono16, _ = lc.prepared_track(audio)
         restarts = lc.plan_restarts(mono16, seconds * 25)
-        self.assertEqual(len(restarts), 2)
+        self.assertGreaterEqual(len(restarts), 2)
         spans = lc.plan_chunks(seconds * 25, restarts)
         self.assertEqual([o for _, _, o in seen], [on for _, _, on in spans])
         final = Path(self.tmp.name) / "refresh.mp4"

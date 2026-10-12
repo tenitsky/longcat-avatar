@@ -20,7 +20,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 ## Generate a video
 
 1. Open ComfyUI's Workflows sidebar.
-2. Select **longcat_bf16_return_to_portrait_640** (80 GB GPU) or **longcat_fp8_return_to_portrait_640** (32-48 GB).
+2. Select **longcat_bf16_1_single_audio_640x640** (80 GB GPU) or the **fp8** one (32-48 GB). **3**/**4** are 960x960; **2**/**4** render every voiceover in input/batch_audio.
 3. Load your portrait and voiceover (a 71 s sample is preloaded).
 4. **Prompt** is optional: leave it empty, or describe the portrait in a sentence.
 5. Test one chunk at batch count 1.
@@ -28,7 +28,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 
 The final video lands in ComfyUI/output. To resume, queue again.
 
-**Against drift:** every chunk is pulled back toward the portrait, and every 30-40 s, at a pause, the render restarts from the portrait itself: a small jump at the pause, in exchange for a face that stays true.
+**Against drift:** every chunk is pulled back toward the portrait, and every 20-40 s, in the middle of a real pause (mouth shut), the render restarts from the portrait itself. The cuts are planned from the voiceover up front.
 
 ## Hardware
 

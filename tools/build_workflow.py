@@ -11,9 +11,10 @@ ever loads it. Re-run after editing:
 Opening the result in ComfyUI and saving it again is fine - the UI adds sizes and
 cosmetic properties, but the wiring stays the same.
 
-One workflow ships: Return to Portrait, in a BF16 and an FP8 version (PRECISIONS),
-which differ only in the model file loaded and Block Swap. The graph can also be built
-for other canvases, anchors and a batch folder (VARIANTS, build(batch=True)).
+Eight workflows ship: single audio and batch folder, at 640 x 640 and 960 x 960,
+each in a BF16 and an FP8 version (PRECISIONS), which differ only in the model file
+loaded and Block Swap. All use the return-to-portrait anchor and restarts from the
+portrait at real pauses.
 
 Model nodes come from kijai/ComfyUI-WanVideoWrapper (LongCat support lives there;
 ComfyUI has no native LongCat video nodes). Their widget order follows that pack's
@@ -54,22 +55,34 @@ MODEL_FP8 = "LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 
 ANCHOR_IDENTITY = "identity (default)"
 ANCHOR_WINDOW_END = "return to portrait"
-# Restarts from the portrait against drift: one in every 30-40 s (about every 10
-# chunks), at a pause in the voiceover.
-RESTART_MIN, RESTART_MAX = 30.0, 40.0
+# Restarts from the portrait against drift: one in every 20-40 s, in the middle of a
+# real pause (0.4 s+ of near-silence) planned from the whole voiceover.
+RESTART_MIN, RESTART_MAX = 20.0, 40.0
+MIN_PAUSE = 0.4
 WINDOW = 93
 
 BYPASS = 4  # LiteGraph node mode: pass the input straight through
 
 VARIANTS = {
-    "return_to_portrait": dict(
-        title="Return to Portrait (640)",
-        summary="640 x 640. Every 3.2 s chunk continues from the one before, with the "
-                "portrait as identity reference on each window's last frame, pulling "
-                "every chunk back toward the portrait pose. Every 30-40 s, on a pause in "
-                "the voiceover, the render starts again from the portrait itself: a full "
-                "refresh against the noise that otherwise grows from chunk to chunk.",
-        canvas=640, anchor=ANCHOR_WINDOW_END, tag="_return_to_portrait"),
+    "640": dict(
+        title="640 x 640",
+        summary="640 x 640 (LongCat's 480p tier). " + "Every 3.2 s chunk continues from the one before, with the portrait as "
+                "identity reference on each window's last frame, pulling every chunk "
+                "back toward the portrait pose. Every 20-40 s, in the middle of a real "
+                "pause in the speech (mouth shut), the render starts again from the "
+                "portrait itself: a full refresh against the noise that otherwise grows "
+                "from chunk to chunk.",
+        canvas=640, anchor=ANCHOR_WINDOW_END),
+    "960": dict(
+        title="960 x 960 (high quality)",
+        summary="960 x 960 (LongCat's 720p tier), high quality: about 2.3 times the "
+                "rendering time of 640. " + "Every 3.2 s chunk continues from the one before, with the portrait as "
+                "identity reference on each window's last frame, pulling every chunk "
+                "back toward the portrait pose. Every 20-40 s, in the middle of a real "
+                "pause in the speech (mouth shut), the render starts again from the "
+                "portrait itself: a full refresh against the noise that otherwise grows "
+                "from chunk to chunk.",
+        canvas=960, anchor=ANCHOR_WINDOW_END),
 }
 
 # BF16 targets 80 GB GPUs, so Block Swap starts bypassed. FP8 targets smaller GPUs, so
@@ -89,9 +102,20 @@ PRECISIONS = {
                 "version of this workflow."),
 }
 
-ORDER = [("return_to_portrait", False, "return_to_portrait_640")]
-IDS = {"bf16": ["5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42"],
-       "fp8": ["cdcc91ba-011a-4221-8ebe-078d7047e496"]}
+# Numbered so the Workflows sidebar lists them in the order to use them: one voiceover,
+# then a folder of them, at 640 and then 960.
+ORDER = [
+    ("640", False, "1_single_audio_640x640"),
+    ("640", True, "2_batch_audio_640x640"),
+    ("960", False, "3_single_audio_960x960"),
+    ("960", True, "4_batch_audio_960x960"),
+]
+IDS = {
+    "bf16": ["5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42", "ea9c44d6-5ded-4a95-bd4d-86675cdf87f9",
+             "9dfa1065-d7b1-4af0-b2f3-91396d0c227d", "cbb88312-d0c1-4a97-b050-ca21ddf242d5"],
+    "fp8": ["cdcc91ba-011a-4221-8ebe-078d7047e496", "589b2b49-fdab-45e7-bd58-818d78e63c71",
+            "0c17be5a-9135-4615-8ba6-4b109ff2dbfc", "b2405b71-fd77-497a-a0d2-32c5956c59dc"],
+}
 WORKFLOWS = [dict(variant=variant, batch=batch, precision=precision,
                   path=f"longcat_{precision}_{name}.json", id=IDS[precision][i])
              for precision in PRECISIONS for i, (variant, batch, name) in enumerate(ORDER)]
@@ -104,9 +128,10 @@ def settings(variant, precision):
     return {**v, "precision": precision, "model": p["model"],
             "quantization": p["quantization"], "loader_title": p["loader_title"],
             "block_swap": p["block_swap"],
-            "title": f"LongCat Avatar - {p['label']} - {v['title']}",
+            "title": f"LongCat {p['label']} - {v['title']}",
+            "label": p["label"], "size_title": v["title"],
             "summary": f"{v['summary']}\n\n{p['summary']}",
-            "suffix": f"_{precision}_{v['canvas']}{v['tag']}"}
+            "suffix": f"_{precision}_{v['canvas']}"}
 
 
 # ------------------------------------------------------------------------ notes
@@ -118,7 +143,7 @@ It generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video con
 
 **No end frame.** Conditioning frames always sit at the start of a window. Return to Portrait uses the one lever there is: the position of the identity reference inside the window.
 
-**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 30-40 s, on a pause in the voiceover, a chunk starts again from the portrait as the first one does.
+**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 20-40 s, in the middle of a real pause in the speech, a chunk starts again from the portrait as the first one does.
 
 Model card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"""
 
@@ -161,7 +186,7 @@ The voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 k
 
 **Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.
 
-**Restarts against drift.** Once in every **30-40 s** (`restart_min_seconds` / `restart_max_seconds`, about every 10 chunks), on the quietest moment of the voiceover in that range, a chunk opens on the **portrait** again, exactly as chunk 1 does, instead of the previous frames. It costs a small jump at a pause and brings the face back to the portrait. Set `restart_max_seconds` to 0 to turn restarts off. The restart points are listed in the log on the first chunk.
+**Restarts against drift.** Before the first chunk, the whole voiceover is scanned for **real pauses**: at least `min_pause_seconds` (0.4 s) of near-silence, mouth shut. Once in every **20-40 s** (`restart_min_seconds` / `restart_max_seconds`), a chunk opens on the **portrait** again, exactly as chunk 1 does, placed in the middle of the longest real pause in that range. With no real pause there, the next one within 20 s is used rather than cutting into speech. It costs a small jump in a silence and brings the face back to the portrait. The plan is listed in the log on the first chunk and saved as `restart_plan.txt` next to the chunks. Set `restart_max_seconds` to 0 to turn restarts off.
 
 {anchor} You can switch the anchor here on any workflow; use a new `name_suffix` when you do.
 
@@ -246,7 +271,8 @@ def note_start(w, v):
                "skipped in milliseconds.")
         more = ("**Next video:** load the new voiceover and run. It starts at chunk 1 in "
                 "its own folder; there is nothing to reset.")
-    return f"""# {v['title']}{' - Batch Folder (one video per voiceover)' if w['batch'] else ''}
+    kind = "Batch Audio (one video per voiceover)" if w["batch"] else "Single Audio"
+    return f"""# LongCat {v['label']} - {kind} - {v['size_title']}
 
 {v['summary']}
 
@@ -372,7 +398,7 @@ SPLIT_OUTPUTS = [("audio_chunk", "AUDIO"), ("whisper_audio", "AUDIO"),
                  ("opens_on_portrait", "BOOLEAN"), ("chunk_index", "INT")]
 
 
-def build(variant="return_to_portrait", batch=False, precision="bf16"):
+def build(variant="640", batch=False, precision="bf16"):
     v = settings(variant, precision)
     w = next(w for w in WORKFLOWS if w["variant"] == variant and w["batch"] == batch
              and w["precision"] == precision)
@@ -441,7 +467,7 @@ def build(variant="return_to_portrait", batch=False, precision="bf16"):
     g.node(20, "LongCatLongformSplit",
            inputs=[("audio", "AUDIO", I, False)]
            + ([("session", "STRING", I, True)] if batch else []),
-           outputs=SPLIT_OUTPUTS, widgets=[v["anchor"], RESTART_MIN, RESTART_MAX],
+           outputs=SPLIT_OUTPUTS, widgets=[v["anchor"], RESTART_MIN, RESTART_MAX, MIN_PAUSE],
            title="Split (next unfinished window)", cnr=LF, size=size(400))
 
     # ---------------------------------------------------------------- 4. models

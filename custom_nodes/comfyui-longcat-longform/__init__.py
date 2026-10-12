@@ -22,11 +22,13 @@ How LongCat differs from H3:
     window's last frame, which is the closest LongCat gets to an end frame: a soft pull
     toward that image, not a pinned frame.
   * Restarts against drift. Continuation alone drifts over long videos: small noise
-    in the carried frames grows from chunk to chunk. So once in every 30-40 s (on the
-    quietest moment of the voiceover in that range) a chunk
+    in the carried frames grows from chunk to chunk. So once in every 20-40 s a chunk
     opens on the portrait again instead of the previous frames, exactly as chunk 0
-    does. Each restart is a small jump at a pause, in exchange for a face that keeps
-    returning to the portrait.
+    does. The restarts are planned from the whole voiceover before rendering: each
+    goes in the middle of the longest real pause (0.4 s+ of near-silence, mouth shut)
+    in its window, or the next real pause within 20 s, never mid-word if a pause
+    exists. Each is a small jump at a pause, for a face that keeps returning to the
+    portrait.
   * Audio. Whisper features are computed per window from a 16 kHz mono slice with two
     seconds of context either side, after normalising the WHOLE track to -23 LUFS, so
     the gain does not jump between windows and no 400-second cap applies.
@@ -79,39 +81,99 @@ ANCHOR_WINDOW_END = "return to portrait"
 ANCHORS = [ANCHOR_IDENTITY, ANCHOR_WINDOW_END]
 
 # Restarts from the portrait, against drift: one in every RESTART_MIN-RESTART_MAX
-# seconds (about every 10 chunks), placed on the quietest moment of the voiceover in
-# that range, which splits the chunk there.
-RESTART_MIN, RESTART_MAX = 30.0, 40.0
-PAUSE_SMOOTH = 5          # frames (0.2 s) of loudness averaged when looking for a pause
+# seconds, placed in the middle of a real pause in the speech (mouth shut), found in
+# the whole voiceover before rendering starts.
+RESTART_MIN, RESTART_MAX = 20.0, 40.0
+MIN_PAUSE = 0.4           # seconds of near-silence that count as a real pause
+PAUSE_SEARCH_EXTRA = 20.0  # look this much past RESTART_MAX for a real pause
 RESTART_TAIL = 3 * FPS    # no restart in the last 3 s: not worth a jump
 
 
 # --------------------------------------------------------------------------- helpers
-def plan_restarts(mono16, total, min_seconds=RESTART_MIN, max_seconds=RESTART_MAX):
-    """Frames where the render starts again from the portrait.
+def frame_loudness(mono16, total):
+    """Loudness of every video frame in dB (RMS of its 640 samples at 16 kHz)."""
+    rms = np.zeros(total, dtype=np.float64)
+    usable = min(total, len(mono16) // SAMPLES_PER_FRAME)
+    if usable:
+        audio = mono16[:usable * SAMPLES_PER_FRAME].astype(np.float64)
+        rms[:usable] = np.sqrt((audio.reshape(usable, SAMPLES_PER_FRAME) ** 2).mean(1))
+    return 20 * np.log10(rms + 1e-9)
 
-    Walking from the start, each restart goes on the quietest moment between
-    min_seconds and max_seconds after the previous one (or the start): a pause in the
-    speech, where a jump back to the portrait pose shows least. max_seconds <= 0
-    turns restarts off.
+
+def find_pauses(mono16, total):
+    """Every stretch of near-silence as (first_frame, end_frame), end exclusive.
+
+    The threshold adapts to the recording: 30% of the way from its noise floor (5th
+    percentile) to its speech level (95th), and at least 20 dB under the speech, so
+    room tone counts as silence and soft syllables do not. A single louder frame
+    inside a pause (a click, a breath) does not split it.
+    """
+    db = frame_loudness(mono16, total)
+    if total == 0:
+        return []
+    floor, speech = np.percentile(db, 5), np.percentile(db, 95)
+    threshold = min(floor + 0.3 * (speech - floor), speech - 20.0)
+    quiet = db < threshold
+    quiet[1:-1] |= quiet[:-2] & quiet[2:]          # bridge one-frame bumps
+    pauses, start = [], None
+    for i, q in enumerate(quiet):
+        if q and start is None:
+            start = i
+        elif not q and start is not None:
+            pauses.append((start, i))
+            start = None
+    if start is not None:
+        pauses.append((start, total))
+    return pauses
+
+
+def plan_restarts(mono16, total, min_seconds=RESTART_MIN, max_seconds=RESTART_MAX,
+                  min_pause=MIN_PAUSE, details=False):
+    """Frames where the render starts again from the portrait, planned from the whole
+    voiceover before any chunk renders.
+
+    Walking from the start, each restart goes in the middle of the longest real pause
+    (at least min_pause seconds of near-silence, mouth shut) between min_seconds and
+    max_seconds after the previous restart. With no such pause in that window, the
+    first real pause in the next PAUSE_SEARCH_EXTRA seconds is used instead of cutting
+    into speech; only if there is none either does the longest shorter gap in the
+    window get it, and as a last resort its quietest frame. max_seconds <= 0 turns
+    restarts off. details=True returns (frame, pause_seconds, how) tuples.
     """
     if max_seconds <= 0 or total <= 0:
         return []
     lo, hi = sorted((max(1.0, float(min_seconds)), float(max_seconds)))
     lo_f, hi_f = int(round(lo * FPS)), int(round(hi * FPS))
-    frames = np.zeros(total, dtype=np.float64)
-    usable = min(total, len(mono16) // SAMPLES_PER_FRAME)
-    if usable:
-        audio = mono16[:usable * SAMPLES_PER_FRAME].astype(np.float64)
-        frames[:usable] = np.sqrt((audio.reshape(usable, SAMPLES_PER_FRAME) ** 2).mean(1))
-    loudness = np.convolve(frames, np.ones(PAUSE_SMOOTH) / PAUSE_SMOOTH, mode="same")
-    restarts, last = [], 0
+    extra_f = int(round(PAUSE_SEARCH_EXTRA * FPS))
+    need = max(1, int(round(float(min_pause) * FPS)))
+    db = frame_loudness(mono16, total)
+    pauses = find_pauses(mono16, total)
+    end_limit = total - RESTART_TAIL
+    plan, last = [], 0
+
+    def mid(p):
+        return (p[0] + p[1]) // 2
+
     while True:
-        first, end = last + lo_f, min(last + hi_f, total - RESTART_TAIL)
+        first, end = last + lo_f, min(last + hi_f, end_limit)
         if first >= end:
-            return restarts
-        last = first + int(np.argmin(loudness[first:end + 1]))
-        restarts.append(last)
+            break
+        in_window = [p for p in pauses if first <= mid(p) <= end]
+        real = [p for p in in_window if p[1] - p[0] >= need]
+        later = [p for p in pauses if end < mid(p) <= min(last + hi_f + extra_f, end_limit)
+                 and p[1] - p[0] >= need]
+        if real:
+            pick, how = max(real, key=lambda p: (p[1] - p[0], -db[p[0]:p[1]].mean())), "pause"
+        elif later:
+            pick, how = later[0], "pause after the window"
+        elif in_window:
+            pick, how = max(in_window, key=lambda p: p[1] - p[0]), "short gap"
+        else:
+            frame = first + int(np.argmin(db[first:end + 1]))
+            pick, how = (frame, frame + 1), "no gap: quietest frame"
+        last = mid(pick)
+        plan.append((last, (pick[1] - pick[0]) / FPS, how))
+    return plan if details else [f for f, _, _ in plan]
 
 
 def plan_chunks(total, restarts=()):
@@ -364,12 +426,18 @@ class LongCatLongformSplit:
                     "default": RESTART_MIN, "min": 1.0, "max": 600.0, "step": 1.0,
                     "tooltip": "Against drift, the render starts again from the "
                                "portrait once in every restart_min to restart_max "
-                               "seconds, on the quietest moment of the voiceover in that "
-                               "range (a pause), where the small jump shows least."}),
+                               "seconds, in the middle of the longest real pause in the "
+                               "speech in that range (mouth shut), where the jump shows "
+                               "least. Planned from the whole voiceover up front."}),
                 "restart_max_seconds": ("FLOAT", {
                     "default": RESTART_MAX, "min": 0.0, "max": 600.0, "step": 1.0,
-                    "tooltip": "Latest restart after the previous one. 0 turns restarts "
-                               "off: every chunk continues from the one before."}),
+                    "tooltip": "Latest restart after the previous one; with no real "
+                               "pause by then, the next one within 20 s is used instead "
+                               "of cutting into speech. 0 turns restarts off."}),
+                "min_pause_seconds": ("FLOAT", {
+                    "default": MIN_PAUSE, "min": 0.1, "max": 3.0, "step": 0.05,
+                    "tooltip": "How long a stretch of near-silence must be to count as a "
+                               "real pause for a restart."}),
             },
             "optional": {
                 # A socket, not a widget: the batch workflows wire the folder node's
@@ -395,12 +463,15 @@ class LongCatLongformSplit:
         return float("nan")
 
     def split(self, audio, anchor=ANCHOR_WINDOW_END, restart_min_seconds=RESTART_MIN,
-              restart_max_seconds=RESTART_MAX, session=None, prompt=None):
+              restart_max_seconds=RESTART_MAX, min_pause_seconds=MIN_PAUSE, session=None,
+              prompt=None):
         session = session or _session_from_prompt(prompt)
         wav, sr = audio["waveform"], int(audio["sample_rate"])
         total = int(round(wav.shape[-1] * FPS / sr))
         mono16, gain = prepared_track(audio)
-        restarts = plan_restarts(mono16, total, restart_min_seconds, restart_max_seconds)
+        plan = plan_restarts(mono16, total, restart_min_seconds, restart_max_seconds,
+                             min_pause_seconds, details=True)
+        restarts = [f for f, _, _ in plan]
         spans = plan_chunks(total, restarts)
         if not spans:
             raise RuntimeError("The voiceover is too short to render.")
@@ -435,10 +506,15 @@ class LongCatLongformSplit:
         chunk_audio = {"waveform": wav[..., a:b], "sample_rate": sr}
 
         if index == 0:
-            where = ", ".join(f"{r / FPS:.1f}s" for r in restarts) or "none"
+            lines = [f"{f / FPS:7.2f}s  pause {length:.2f}s  ({how})"
+                     for f, length, how in plan]
             print(f"{LOG} '{session}': {total / FPS:.1f}s, {len(spans)} chunks, "
-                  f"anchor={anchor}, restarts from the portrait at: {where}, "
-                  f"loudness gain {gain:.2f}")
+                  f"anchor={anchor}, loudness gain {gain:.2f}, {len(plan)} restart(s) "
+                  f"from the portrait:" + "".join(f"\n{LOG}   {l}" for l in lines))
+            with open(os.path.join(_session_dir(session), "restart_plan.txt"), "w",
+                      encoding="utf-8") as f:
+                f.write("Restarts from the portrait (time in the voiceover, pause length, "
+                        "how chosen):\n" + "".join(l + "\n" for l in lines))
         what = "opens on the portrait" if on_portrait else f"lead-in {trim}"
         print(f"{LOG} chunk {index + 1}/{len(spans)}  {start / FPS:.2f}s "
               f"+{keep / FPS:.2f}s  (window from frame {window}, {what}, "
