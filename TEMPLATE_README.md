@@ -20,21 +20,19 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 ## Generate a video
 
 1. Open ComfyUI's Workflows sidebar.
-2. Select **longcat_bf16_1_fast_640** to test, then **longcat_bf16_2_high_quality_960** for the final video. On smaller GPUs use the **longcat_fp8_…** versions.
+2. Select **longcat_bf16_return_to_portrait_640** (80 GB GPU) or **longcat_fp8_return_to_portrait_640** (32-48 GB).
 3. Load your portrait and voiceover (a 71 s sample is preloaded).
 4. **Prompt** is optional: leave it empty, or describe the portrait in a sentence.
 5. Test one chunk at batch count 1.
 6. Queue roughly audio seconds divided by 3.2, plus a margin. Each item renders the next unfinished chunk, continuing from the one before.
 
-The final video lands in ComfyUI/output (e.g. talk_bf16_960.mp4). Next video: load its voiceover and queue. To resume, queue again.
+The final video lands in ComfyUI/output. To resume, queue again.
 
-**Batch folder:** workflows **3** (fast) and **4** (high quality) render every voiceover in ComfyUI/input/batch_audio/, one video each.
-
-**Experimental:** LongCat has no end-frame input. Workflow **5** pulls each chunk back toward the portrait; **6** steers the ending toward a second image.
+**Against drift:** every chunk is pulled back toward the portrait, and every 30-40 s, at a pause, the render restarts from the portrait itself: a small jump at the pause, in exchange for a face that stays true.
 
 ## Hardware
 
-**bf16** workflows: 80 GB or more VRAM, Block Swap off. **fp8** workflows: 32–48 GB, Block Swap already on (20 blocks). Not yet benchmarked on a live pod.
+**bf16** workflow: 80 GB or more VRAM, Block Swap off. **fp8** workflow: 32–48 GB, Block Swap already on (20 blocks). Not yet benchmarked on a live pod.
 
 Full instructions:
 https://github.com/tenitsky/longcat-avatar

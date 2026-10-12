@@ -11,10 +11,9 @@ ever loads it. Re-run after editing:
 Opening the result in ComfyUI and saving it again is fine - the UI adds sizes and
 cosmetic properties, but the wiring stays the same.
 
-Every workflow shares one graph. The variants differ only in canvas, anchor mode and
-whether there is an End Image, as set in VARIANTS. Fast and High Quality also come in
-a batch version that renders every audio file in a folder. Every workflow comes in a
-BF16 and an FP8 version (PRECISIONS), which differ only in the model file loaded.
+One workflow ships: Return to Portrait, in a BF16 and an FP8 version (PRECISIONS),
+which differ only in the model file loaded and Block Swap. The graph can also be built
+for other canvases, anchors and a batch folder (VARIANTS, build(batch=True)).
 
 Model nodes come from kijai/ComfyUI-WanVideoWrapper (LongCat support lives there;
 ComfyUI has no native LongCat video nodes). Their widget order follows that pack's
@@ -54,41 +53,23 @@ SAMPLE_VOICEOVER = "sample_voiceover.mp3"
 MODEL_FP8 = "LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 
 ANCHOR_IDENTITY = "identity (default)"
-ANCHOR_WINDOW_END = "return to portrait (experimental)"
-ANCHOR_END_IMAGE = "end image (experimental)"
+ANCHOR_WINDOW_END = "return to portrait"
+# Restarts from the portrait against drift: one in every 30-40 s (about every 10
+# chunks), at a pause in the voiceover.
+RESTART_MIN, RESTART_MAX = 30.0, 40.0
 WINDOW = 93
 
 BYPASS = 4  # LiteGraph node mode: pass the input straight through
 
 VARIANTS = {
-    "fast": dict(
-        title="Fast (640)",
-        summary="Fast preview at 640 x 640 (LongCat's 480p tier): under half the pixels "
-                "of High Quality. Check timing, lip sync and framing here, then render "
-                "the final with High Quality (960).",
-        canvas=640, anchor=ANCHOR_IDENTITY, end_image=False, tag=""),
-    "high_quality": dict(
-        title="High Quality (960)",
-        summary="Final quality at 960 x 960 (LongCat's 720p tier), 8 distilled steps. "
-                "Every chunk continues from the previous one's last frames, so there "
-                "are no pose resets at the joins.",
-        canvas=960, anchor=ANCHOR_IDENTITY, end_image=False, tag=""),
     "return_to_portrait": dict(
-        title="Experimental: Return to Portrait (640)",
-        summary="EXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can "
-                "place its identity reference at any point in a window. This workflow "
-                "puts the portrait on every window's last frame, pulling each 3.2 s "
-                "chunk back toward the portrait pose, the closest LongCat gets to "
-                "MiniMax H3's first/last-frame anchoring. Expect less drift over long "
-                "videos and possibly a repeating motion every chunk.",
-        canvas=640, anchor=ANCHOR_WINDOW_END, end_image=False, tag="_return_to_portrait"),
-    "start_to_end": dict(
-        title="Experimental: Start Image to End Image (640)",
-        summary="EXPERIMENTAL, 640 x 640. Starts on the Portrait and steers the final "
-                "chunk toward the End Image: same person, a different pose, expression "
-                "or framing. It is a soft pull on the last frame, not a pinned frame; "
-                "LongCat has no true end-frame input.",
-        canvas=640, anchor=ANCHOR_END_IMAGE, end_image=True, tag="_start_to_end"),
+        title="Return to Portrait (640)",
+        summary="640 x 640. Every 3.2 s chunk continues from the one before, with the "
+                "portrait as identity reference on each window's last frame, pulling "
+                "every chunk back toward the portrait pose. Every 30-40 s, on a pause in "
+                "the voiceover, the render starts again from the portrait itself: a full "
+                "refresh against the noise that otherwise grows from chunk to chunk.",
+        canvas=640, anchor=ANCHOR_WINDOW_END, tag="_return_to_portrait"),
 }
 
 # BF16 targets 80 GB GPUs, so Block Swap starts bypassed. FP8 targets smaller GPUs, so
@@ -108,24 +89,9 @@ PRECISIONS = {
                 "version of this workflow."),
 }
 
-# Numbered so the Workflows sidebar lists them in the order to use them: a fast test,
-# the final render, the same two for a folder of voiceovers, then the experiments.
-ORDER = [
-    ("fast", False, "1_fast_640"),
-    ("high_quality", False, "2_high_quality_960"),
-    ("fast", True, "3_fast_640_batch_folder"),
-    ("high_quality", True, "4_high_quality_960_batch_folder"),
-    ("return_to_portrait", False, "5_experimental_return_to_portrait_640"),
-    ("start_to_end", False, "6_experimental_start_to_end_image_640"),
-]
-IDS = {
-    "bf16": ["c4e8a2f1-5b37-4d90-8e2c-6f1a9d3b7c05", "7b3d1e52-0c4a-4f8e-9a61-2d5c8f0e4b17",
-             "e1a7b4c9-3d62-4f15-a8e0-5b9c2d7f4e38", "2f9c6d83-1e4b-4a7f-b5d0-8c3e7a1f9264",
-             "5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42", "a8f3c1d6-2b9e-4e57-8c14-7d0e6b2f9a31"],
-    "fp8": ["4ca57a01-1f50-4ca2-a5b7-6a8d15312df3", "d8860ff8-69f7-4bc5-ac32-7d21b29166c9",
-            "5607ac0a-d36f-4b06-a93e-8c627ed8f0be", "9eb768cd-76de-4eec-a816-5d4072a7867e",
-            "cdcc91ba-011a-4221-8ebe-078d7047e496", "2b68c501-2da5-4d83-a4b4-dde3ebe8bd20"],
-}
+ORDER = [("return_to_portrait", False, "return_to_portrait_640")]
+IDS = {"bf16": ["5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42"],
+       "fp8": ["cdcc91ba-011a-4221-8ebe-078d7047e496"]}
 WORKFLOWS = [dict(variant=variant, batch=batch, precision=precision,
                   path=f"longcat_{precision}_{name}.json", id=IDS[precision][i])
              for precision in PRECISIONS for i, (variant, batch, name) in enumerate(ORDER)]
@@ -150,19 +116,17 @@ Meituan's audio-driven avatar model (MIT licence), built on LongCat-Video. It ru
 
 It generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video continuation**: each window opens on the last 13 frames of the one before and adds 80 new frames.
 
-**No end frame.** Conditioning frames always sit at the start of a window. The two experimental workflows use the one lever there is: the position of the identity reference inside the window.
+**No end frame.** Conditioning frames always sit at the start of a window. Return to Portrait uses the one lever there is: the position of the identity reference inside the window.
+
+**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 30-40 s, on a pause in the voiceover, a chunk starts again from the portrait as the first one does.
 
 Model card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"""
 
 
 def note_inputs(v):
-    end = ("\n\n**End Image:** the same person in the pose, expression or framing the "
-           "video should finish on. It is cropped like the portrait. Very different "
-           "framing or a different person will not blend well."
-           if v["end_image"] else "")
     return f"""## 1. Inputs
 
-**Portrait:** one person facing the camera, face clearly visible. The first frame of the video, and the identity reference for every later chunk. Any size; it is center-cropped to the canvas.{end}
+**Portrait:** one person facing the camera, face clearly visible. The first frame of the video, and the identity reference for every later chunk. Any size; it is center-cropped to the canvas.
 
 **Canvas** (Width x Height), multiples of 16. LongCat has two tiers:
 
@@ -187,19 +151,17 @@ def note_plan(v):
     anchor = {
         ANCHOR_IDENTITY: "**anchor: identity** (upstream default): the portrait is the "
                          "reference at frame index 10 of each window.",
-        ANCHOR_WINDOW_END: "**anchor: return to portrait** (experimental): the reference "
-                           "sits on each window's last frame with no mask, pulling every "
-                           "chunk back toward the portrait.",
-        ANCHOR_END_IMAGE: "**anchor: end image** (experimental): identity for every "
-                          "chunk but the last, whose final frame is pulled toward the End "
-                          "Image. A video shorter than one window is split in two so the "
-                          "end image can apply.",
+        ANCHOR_WINDOW_END: "**anchor: return to portrait**: the reference sits on each "
+                           "window's last frame with no mask, pulling every chunk back "
+                           "toward the portrait.",
     }[v["anchor"]]
     return f"""## 3. Chunk plan
 
 The voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.
 
 **Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.
+
+**Restarts against drift.** Once in every **30-40 s** (`restart_min_seconds` / `restart_max_seconds`, about every 10 chunks), on the quietest moment of the voiceover in that range, a chunk opens on the **portrait** again, exactly as chunk 1 does, instead of the previous frames. It costs a small jump at a pause and brings the face back to the portrait. Set `restart_max_seconds` to 0 to turn restarts off. The restart points are listed in the log on the first chunk.
 
 {anchor} You can switch the anchor here on any workflow; use a new `name_suffix` when you do.
 
@@ -247,7 +209,7 @@ NOTE_SAMPLING = """## 6. Sampling + decode
 
 Fixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.
 
-Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."""
+Out of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 version of this workflow."""
 
 
 def note_output(batch):
@@ -284,15 +246,13 @@ def note_start(w, v):
                "skipped in milliseconds.")
         more = ("**Next video:** load the new voiceover and run. It starts at chunk 1 in "
                 "its own folder; there is nothing to reset.")
-    end = ("\n1b. **Load End Image** - the same person as they should look at the very "
-           "end." if v["end_image"] else "")
     return f"""# {v['title']}{' - Batch Folder (one video per voiceover)' if w['batch'] else ''}
 
 {v['summary']}
 
 **Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.
 
-1. **Load Portrait** - one person facing the camera, face clearly visible.{end}
+1. **Load Portrait** - one person facing the camera, face clearly visible.
 {audio}
 3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.
 {test} Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.
@@ -409,10 +369,10 @@ SPLIT_OUTPUTS = [("audio_chunk", "AUDIO"), ("whisper_audio", "AUDIO"),
                  ("frames_processed", "INT"), ("ref_frame_index", "INT"),
                  ("ref_mask_frame_range", "INT"), ("trim_start", "INT"),
                  ("keep_frames", "INT"), ("total_chunks", "INT"),
-                 ("use_end_image", "BOOLEAN"), ("chunk_index", "INT")]
+                 ("opens_on_portrait", "BOOLEAN"), ("chunk_index", "INT")]
 
 
-def build(variant="high_quality", batch=False, precision="bf16"):
+def build(variant="return_to_portrait", batch=False, precision="bf16"):
     v = settings(variant, precision)
     w = next(w for w in WORKFLOWS if w["variant"] == variant and w["batch"] == batch
              and w["precision"] == precision)
@@ -429,9 +389,9 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     # ---------------------------------------------------------------- notes
     md(g, 1, "Start here", note_start(w, v), (COLUMN_W, 900))
     md(g, 2, "About the model", NOTE_ABOUT, (COLUMN_W, 420))
-    md(g, 3, "About stage 1", note_inputs(v), (COLUMN_W, 520 if v["end_image"] else 440))
+    md(g, 3, "About stage 1", note_inputs(v), (COLUMN_W, 440))
     md(g, 4, "About stage 2", NOTE_PROMPT, (COLUMN_W, 420))
-    md(g, 5, "About stage 3", note_plan(v), (COLUMN_W, 600))
+    md(g, 5, "About stage 3", note_plan(v), (COLUMN_W, 760))
     md(g, 6, "About stage 4", note_models(v), (COLUMN_W, 600))
     md(g, 7, "About stage 5", NOTE_GUIDE, (COLUMN_W, 380))
     md(g, 8, "About stage 6", NOTE_SAMPLING, (COLUMN_W, 260))
@@ -441,11 +401,6 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     g.node(10, "LoadImage", outputs=[("IMAGE", "IMAGE"), ("MASK", "MASK")],
            widgets=[SAMPLE_PORTRAIT, "image"],
            title="Load Portrait (first frame + identity)", color=INPUT, size=size(500))
-    if v["end_image"]:
-        g.node(12, "LoadImage", outputs=[("IMAGE", "IMAGE"), ("MASK", "MASK")],
-               widgets=[SAMPLE_PORTRAIT, "image"],  # placeholder: same person, new pose
-               title="Load End Image (same person, final pose)", color=INPUT,
-               size=size(500))
     if batch:
         g.node(11, "LongCatLongformAudioFolder",
                outputs=[("audio", "AUDIO"), ("name", "STRING"), ("filename", "STRING"),
@@ -486,7 +441,7 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     g.node(20, "LongCatLongformSplit",
            inputs=[("audio", "AUDIO", I, False)]
            + ([("session", "STRING", I, True)] if batch else []),
-           outputs=SPLIT_OUTPUTS, widgets=[v["anchor"]],
+           outputs=SPLIT_OUTPUTS, widgets=[v["anchor"], RESTART_MIN, RESTART_MAX],
            title="Split (next unfinished window)", cnr=LF, size=size(400))
 
     # ---------------------------------------------------------------- 4. models
@@ -541,20 +496,10 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     encode_widgets = [False, 272, 272, 144, 128, 0.0, 1.0]
     g.node(51, "WanVideoEncode", inputs=encode_inputs, outputs=[("samples", "LATENT")],
            widgets=list(encode_widgets), title="Encode portrait", cnr=WV, size=size(250))
-    if v["end_image"]:
-        g.node(54, "ImageScale",
-               inputs=[("image", "IMAGE", I, False), ("width", "INT", W, False),
-                       ("height", "INT", W, False)],
-               outputs=[("IMAGE", "IMAGE")], widgets=["lanczos", side, side, "center"],
-               title="Crop end image to canvas", size=size(170))
-        g.node(52, "WanVideoEncode", inputs=list(encode_inputs),
-               outputs=[("samples", "LATENT")], widgets=list(encode_widgets),
-               title="Encode end image", cnr=WV, size=size(250))
     g.node(53, "LongCatLongformCarry",
-           inputs=[("portrait", "IMAGE", I, False), ("portrait_latent", "LATENT", I, False),
-                   ("end_latent", "LATENT", I, True)]
+           inputs=[("portrait", "IMAGE", I, False), ("portrait_latent", "LATENT", I, False)]
            + ([("session", "STRING", I, True)] if batch else [])
-           + [("chunk_index", "INT", W, False), ("use_end_image", "BOOLEAN", W, False)],
+           + [("chunk_index", "INT", W, False), ("opens_on_portrait", "BOOLEAN", W, False)],
            outputs=[("prev_images", "IMAGE"), ("ref_latent", "LATENT")],
            widgets=[0, False], title="Opening + Reference", cnr=LF, size=size(190))
     g.node(55, "LongCatAvatarWhisperEmbeds",
@@ -627,18 +572,11 @@ def build(variant="high_quality", batch=False, precision="bf16"):
     L(14, 0, 50, "height")
     L(43, 0, 51, "vae")
     L(50, 0, 51, "image")
-    if v["end_image"]:
-        L(12, 0, 54, "image")
-        L(13, 0, 54, "width")
-        L(14, 0, 54, "height")
-        L(43, 0, 52, "vae")
-        L(54, 0, 52, "image")
-        L(52, 0, 53, "end_latent")
 
     L(50, 0, 53, "portrait")
     L(51, 0, 53, "portrait_latent")
     L(20, "chunk_index", 53, "chunk_index")
-    L(20, "use_end_image", 53, "use_end_image")
+    L(20, "opens_on_portrait", 53, "opens_on_portrait")
 
     L(45, 0, 55, "whisper_model")
     L(20, "whisper_audio", 55, "audio_1")
@@ -677,9 +615,8 @@ def build(variant="high_quality", batch=False, precision="bf16"):
         L(21, 1, 70, "filename")
 
     # ---------------------------------------------------------------- layout
-    inputs = [10] + ([12] if v["end_image"] else []) + [11] + ([] if batch else [21]) \
-        + [13, 14]
-    guide = [50, 51] + ([54, 52] if v["end_image"] else []) + [53, 55, 56]
+    inputs = [10, 11] + ([] if batch else [21]) + [13, 14]
+    guide = [50, 51, 53, 55, 56]
     stages = [
         ("1. Your inputs", "input", inputs, [3]),
         ("2. Prompt (optional)", "prompt", [30, 57], [4]),

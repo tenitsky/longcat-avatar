@@ -141,29 +141,20 @@ HF_TOKEN=
 #   sample_voiceover.mp3     71 s voiceover (about 22 chunks)
 
 # Workflows (copied into ComfyUI's Workflows sidebar; edited copies are never overwritten)
-# 12 in total: each one below as longcat_bf16_<name> (full-precision model, Block Swap
-# off) and longcat_fp8_<name> (FP8 model, half the VRAM, Block Swap on at 20 blocks).
-#   1_fast_640                                 fast test, one voiceover
-#   2_high_quality_960                         final video, one voiceover
-#   3_fast_640_batch_folder                    fast, every voiceover in ComfyUI/input/batch_audio/
-#   4_high_quality_960_batch_folder            final, every voiceover in that folder
-#   5_experimental_return_to_portrait_640      experimental
-#   6_experimental_start_to_end_image_640      experimental
-
-# Install locations (all on the Network Volume)
-#   /workspace/runpod-slim/ComfyUI/                ComfyUI, custom nodes, models
-#   /workspace/runpod-slim/ComfyUI/.venv-cu128/    ComfyUI Python environment
-#   /workspace/runpod-slim/ComfyUI/output/         rendered videos
+#   longcat_bf16_return_to_portrait_640   BF16 model, Block Swap off (80 GB GPUs)
+#   longcat_fp8_return_to_portrait_640    FP8 model, Block Swap on (32-48 GB GPUs)
+# Both: portrait pulled back into every chunk, plus a full restart from the portrait
+# every 30-40 s at a pause in the voiceover (restart_min/max_seconds on Split).
 
 
 # ------------------------------------------------------------------------------
 # 9. GPU
 # ------------------------------------------------------------------------------
-# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): BF16 workflows (Block Swap off).
-# 48 GB (A6000, L40S): FP8 workflows as shipped (Block Swap on, 20 blocks).
-# 32 GB (RTX 5090): FP8 workflows; raise blocks_to_swap if 960 runs out; start at 640;
+# 80 GB+ VRAM (H100, A100 80GB, RTX PRO 6000): BF16 workflow (Block Swap off).
+# 48 GB (A6000, L40S): FP8 workflow as shipped (Block Swap on, 20 blocks).
+# 32 GB (RTX 5090): FP8 workflow; raise blocks_to_swap if it runs out of memory;
 #   pick a pod with 64 GB+ system RAM (swapped blocks live there).
-# 24 GB: FP8 Fast (640) workflows, block swap 40+; slow.
+# 24 GB: FP8 workflow, block swap 40+; slow.
 # These are estimates from the model size, not yet benchmarked on a live pod.
 
 

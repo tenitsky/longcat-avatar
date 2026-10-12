@@ -1,5 +1,5 @@
 {
- "id": "5d2e9f71-8a4c-4b3e-9f06-1c7b3e5a8d42",
+ "id": "cdcc91ba-011a-4221-8ebe-078d7047e496",
  "revision": 0,
  "last_node_id": 70,
  "last_link_id": 42,
@@ -25,7 +25,7 @@
    },
    "title": "Start here",
    "widgets_values": [
-    "# LongCat Avatar - BF16 - Experimental: Return to Portrait (640)\n\nEXPERIMENTAL, 640 x 640. LongCat cannot pin an end frame, but it can place its identity reference at any point in a window. This workflow puts the portrait on every window's last frame, pulling each 3.2 s chunk back toward the portrait pose, the closest LongCat gets to MiniMax H3's first/last-frame anchoring. Expect less drift over long videos and possibly a repeating motion every chunk.\n\n**BF16 model** (31.7 GB): full precision, the reference quality. Needs an 80 GB GPU, or Block Swap below that.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
+    "# LongCat Avatar - FP8 - Return to Portrait (640)\n\n640 x 640. Every 3.2 s chunk continues from the one before, with the portrait as identity reference on each window's last frame, pulling every chunk back toward the portrait pose. Every 30-40 s, on a pause in the voiceover, the render starts again from the portrait itself: a full refresh against the noise that otherwise grows from chunk to chunk.\n\n**FP8 model** (~17 GB), made from the BF16 file at setup: about half the VRAM for the model weights, at a small cost in precision. **Block Swap is on** (20 of 48 blocks) for 32-48 GB GPUs. Compare with the BF16 version of this workflow.\n\n**Red nodes are the ones you set.** Everything else runs on its own. The stages run left to right, 1 to 7, each with a note underneath.\n\n1. **Load Portrait** - one person facing the camera, face clearly visible.\n2. **Load Voiceover** - your speech track, any length.\n3. **Prompt** (optional) - leave empty, or describe the portrait in a sentence.\n4. Run with **batch count 1** to test the first chunk. Check `output/longcat_longform/<name>/chunk_0000.mp4`: lips, face, background.\n5. Run again with a batch count of at least **audio seconds / 3.2**, plus a margin. Each run renders the next unfinished chunk; extra runs are skipped in milliseconds.\n6. The final video lands in `output/`, then the queue is cleared.\n\n**Next video:** load the new voiceover and run. It starts at chunk 1 in its own folder; there is nothing to reset.\n\nA 7-minute voiceover is about 130 chunks. If the batch count box stops at 100, click Run several times: the queue adds up.\n\nFull instructions: https://github.com/tenitsky/longcat-avatar"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -51,7 +51,7 @@
    },
    "title": "About the model",
    "widgets_values": [
-    "## About LongCat-Video-Avatar 1.5\n\nMeituan's audio-driven avatar model (MIT licence), built on LongCat-Video. It runs here through **kijai/ComfyUI-WanVideoWrapper**; ComfyUI has no native LongCat video nodes.\n\nIt generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video continuation**: each window opens on the last 13 frames of the one before and adds 80 new frames.\n\n**No end frame.** Conditioning frames always sit at the start of a window. The two experimental workflows use the one lever there is: the position of the identity reference inside the window.\n\nModel card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"
+    "## About LongCat-Video-Avatar 1.5\n\nMeituan's audio-driven avatar model (MIT licence), built on LongCat-Video. It runs here through **kijai/ComfyUI-WanVideoWrapper**; ComfyUI has no native LongCat video nodes.\n\nIt generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video continuation**: each window opens on the last 13 frames of the one before and adds 80 new frames.\n\n**No end frame.** Conditioning frames always sit at the start of a window. Return to Portrait uses the one lever there is: the position of the identity reference inside the window.\n\n**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 30-40 s, on a pause in the voiceover, a chunk starts again from the portrait as the first one does.\n\nModel card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -117,7 +117,7 @@
    ],
    "size": [
     520,
-    600
+    760
    ],
    "flags": {},
    "order": 4,
@@ -129,7 +129,7 @@
    },
    "title": "About stage 3",
    "widgets_values": [
-    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**anchor: return to portrait** (experimental): the reference sits on each window's last frame with no mask, pulling every chunk back toward the portrait. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
+    "## 3. Chunk plan\n\nThe voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 keeps all 93; every later chunk keeps **80 new frames** after a 13-frame lead-in taken from the chunk before, so motion runs straight through every join.\n\n**Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.\n\n**Restarts against drift.** Once in every **30-40 s** (`restart_min_seconds` / `restart_max_seconds`, about every 10 chunks), on the quietest moment of the voiceover in that range, a chunk opens on the **portrait** again, exactly as chunk 1 does, instead of the previous frames. It costs a small jump at a pause and brings the face back to the portrait. Set `restart_max_seconds` to 0 to turn restarts off. The restart points are listed in the log on the first chunk.\n\n**anchor: return to portrait**: the reference sits on each window's last frame with no mask, pulling every chunk back toward the portrait. You can switch the anchor here on any workflow; use a new `name_suffix` when you do.\n\nWhisper gets the window's audio plus 2 s either side, after the whole track is normalised to -23 LUFS, so loudness never jumps between chunks."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -155,7 +155,7 @@
    },
    "title": "About stage 4",
    "widgets_values": [
-    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, BF16** (`LongCat-Avatar-15_bf16.safetensors`, 31.7 GB): full precision. LongCat only runs at bf16 base precision.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Less than 80 GB of VRAM?** Use the **FP8** version of this workflow, and/or select **Block Swap** and press Ctrl+B to enable it (20 of 48 blocks). Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
+    "## 4. Models - loaded automatically\n\nNothing to set here. Setup downloads every file on first boot (Kijai/WanVideo_comfy).\n\n- **LongCat-Avatar 1.5, FP8** (`LongCat-Avatar-15_fp8_e4m3fn.safetensors`, ~17 GB). Setup builds it once from the BF16 download: the large weights are stored as float8_e4m3fn, everything else stays bf16, exactly as the loader's `fp8_e4m3fn` option would convert the BF16 file. Computation still runs at bf16 base precision, which LongCat requires.\n- **DMD distill LoRA**: 8 steps, cfg 1.\n- **v1.5 Distill Sigmas** reproduces the upstream 8-step schedule. WanVideoWrapper's `longcat_distill_euler` is the v1.0 schedule.\n- **umt5-xxl** text encoder, **Wan 2.1 VAE**, **Whisper large-v3** audio encoder.\n\n**Block Swap is on** (20 of 48 blocks): part of the model waits in system RAM and moves to the GPU as each block runs, which fits 32-48 GB GPUs. Still out of memory? Raise `blocks_to_swap`. On an 80 GB+ GPU, select it and press Ctrl+B to bypass it for a little more speed. Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 does not)."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 or Fast (640) version of this workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 version of this workflow."
    ],
    "color": "#222",
    "bgcolor": "#000"
@@ -361,7 +361,7 @@
    "widgets_values": [
     ".mp4",
     "",
-    "_bf16_640_return_to_portrait"
+    "_fp8_640_return_to_portrait"
    ]
   },
   {
@@ -658,8 +658,8 @@
      ]
     },
     {
-     "localized_name": "use_end_image",
-     "name": "use_end_image",
+     "localized_name": "opens_on_portrait",
+     "name": "opens_on_portrait",
      "type": "BOOLEAN",
      "links": [
       15
@@ -681,7 +681,9 @@
    },
    "title": "Split (next unfinished window)",
    "widgets_values": [
-    "return to portrait (experimental)"
+    "return to portrait",
+    30.0,
+    40.0
    ]
   },
   {
@@ -697,7 +699,7 @@
    ],
    "flags": {},
    "order": 17,
-   "mode": 4,
+   "mode": 0,
    "inputs": [],
    "outputs": [
     {
@@ -715,7 +717,7 @@
     "aux_id": "kijai/ComfyUI-WanVideoWrapper",
     "ver": "088128b224242e110d3906c6750e9a3a348a659b"
    },
-   "title": "Block Swap - Ctrl+B to enable below 80 GB VRAM",
+   "title": "Block Swap - ON (20 of 48 blocks); Ctrl+B to bypass on 80 GB+",
    "widgets_values": [
     20,
     false,
@@ -873,20 +875,13 @@
     "Node name for S&R": "WanVideoModelLoader",
     "cnr_id": "comfyui-wanvideowrapper",
     "aux_id": "kijai/ComfyUI-WanVideoWrapper",
-    "ver": "088128b224242e110d3906c6750e9a3a348a659b",
-    "models": [
-     {
-      "name": "LongCat-Avatar-15_bf16.safetensors",
-      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LongCat/LongCat-Avatar-15_bf16.safetensors",
-      "directory": "diffusion_models"
-     }
-    ]
+    "ver": "088128b224242e110d3906c6750e9a3a348a659b"
    },
-   "title": "LongCat-Avatar 1.5 (bf16, full precision)",
+   "title": "LongCat-Avatar 1.5 (fp8 e4m3fn)",
    "widgets_values": [
-    "LongCat-Avatar-15_bf16.safetensors",
+    "LongCat-Avatar-15_fp8_e4m3fn.safetensors",
     "bf16",
-    "disabled",
+    "fp8_e4m3fn",
     "offload_device",
     "sdpa",
     "default"
@@ -1230,13 +1225,6 @@
      "link": 13
     },
     {
-     "localized_name": "end_latent",
-     "name": "end_latent",
-     "type": "LATENT",
-     "link": null,
-     "shape": 7
-    },
-    {
      "localized_name": "chunk_index",
      "name": "chunk_index",
      "type": "INT",
@@ -1246,12 +1234,12 @@
      }
     },
     {
-     "localized_name": "use_end_image",
-     "name": "use_end_image",
+     "localized_name": "opens_on_portrait",
+     "name": "opens_on_portrait",
      "type": "BOOLEAN",
      "link": 15,
      "widget": {
-      "name": "use_end_image"
+      "name": "opens_on_portrait"
      }
     }
    ],
@@ -1766,8 +1754,8 @@
     0,
     1,
     93,
-    "run1_bf16_640_return_to_portrait",
-    "longcat_avatar_bf16_640_return_to_portrait.mp4",
+    "run1_fp8_640_return_to_portrait",
+    "longcat_avatar_fp8_640_return_to_portrait.mp4",
     true,
     0
    ]
@@ -1883,7 +1871,7 @@
    20,
    12,
    53,
-   3,
+   2,
    "INT"
   ],
   [
@@ -1891,7 +1879,7 @@
    20,
    11,
    53,
-   4,
+   3,
    "BOOLEAN"
   ],
   [

@@ -11,7 +11,7 @@ from one item to the next through files on disk.
 | Node | Does |
 |---|---|
 | **Split (next window)** | Plans the track in windows, picks the first unfinished chunk from disk, and outputs its audio (original for the chunk file, 16 kHz with context for Whisper) and every per-window setting the LongCat extend node needs |
-| **Opening + Reference** | Chunk 0: the portrait as a single opening frame, no reference. Later chunks: the previous chunk's last 13 frames, and the portrait (or End Image on the final chunk) as reference latent |
+| **Opening + Reference** | Chunk 0 and every restart: the portrait as a single opening frame, no reference. Other chunks: the previous chunk's last 13 frames, and the portrait as reference latent |
 | **Write + Stitch** | Drops the lead-in, writes the chunk as mp4 and keeps its last 13 frames for the next window. On the last chunk it concatenates them all and muxes in the original track |
 | **Name From Audio File** | Names the session and output after the Load Audio file |
 | **Prompt (optional)** | A generic talking-head prompt, led by an optional `description` of the portrait |
@@ -45,17 +45,27 @@ from one item to the next through files on disk.
 The reference latent's RoPE time position is `ref_frame_index`, in latent frames;
 frames within `ref_mask_frame_range` of it do not attend to it. The Split node sets both:
 
-| anchor | Non-final chunks | Final chunk |
-|---|---|---|
-| identity (default) | portrait at 10, mask 3 (upstream) | same |
-| return to portrait (experimental) | portrait at the last written frame's latent, mask 0 | same |
-| end image (experimental) | portrait at 10, mask 3 | End Image at the last written frame's latent, mask 0 |
+| anchor | Reference on every continuing chunk |
+|---|---|
+| return to portrait (default) | portrait at the last written frame's latent, mask 0 |
+| identity | portrait at 10, mask 3 (upstream) |
 
 Chunk 0 never has a reference: it is upstream's audio-image-to-video stage.
 
+## Restarts against drift
+
+Continuation drifts over long videos: small noise in the carried frames grows from
+chunk to chunk. Split plans a restart once in every `restart_min_seconds` to
+`restart_max_seconds` (30-40 s), on the quietest 0.2 s of the voiceover in that range,
+never in the last 3 s. The chunk starting there opens on the portrait, exactly like
+chunk 0 (one conditioning frame, no reference, a whole window), and the chunk before it
+ends at the pause. Split's `opens_on_portrait` output tells Carry which chunks those are.
+`restart_max_seconds = 0` turns restarts off.
+
 ## Resume and order
 
-A chunk counts as done when its mp4 exists and, unless it is the last, its tail exists.
+A chunk counts as done when its mp4 exists and, if the next chunk continues from it,
+its tail exists.
 Each queue item renders the first chunk that isn't done; the last is redone until a
 stitch writes `.finished`. Chunks depend on their predecessors, so they always render
 in order; there is no multi-pod split as in H3.

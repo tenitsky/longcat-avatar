@@ -18,9 +18,15 @@ How LongCat differs from H3:
     window: conditioning frames always sit at its start.
   * Identity reference. From the second window on, the portrait is also passed as a
     reference latent placed at a time position inside the window (ref_frame_index). The
-    upstream default is position 10. The experimental anchors move it to the window's
-    last frame, which is the closest LongCat gets to an end frame: a soft pull toward
-    that image, not a pinned frame.
+    upstream default is position 10. The return-to-portrait anchor moves it to the
+    window's last frame, which is the closest LongCat gets to an end frame: a soft pull
+    toward that image, not a pinned frame.
+  * Restarts against drift. Continuation alone drifts over long videos: small noise
+    in the carried frames grows from chunk to chunk. So once in every 30-40 s (on the
+    quietest moment of the voiceover in that range) a chunk
+    opens on the portrait again instead of the previous frames, exactly as chunk 0
+    does. Each restart is a small jump at a pause, in exchange for a face that keeps
+    returning to the portrait.
   * Audio. Whisper features are computed per window from a 16 kHz mono slice with two
     seconds of context either side, after normalising the WHOLE track to -23 LUFS, so
     the gain does not jump between windows and no 400-second cap applies.
@@ -69,32 +75,64 @@ SESSION_ROOT = "longcat_longform"
 LOG = "[LongCat Longform]"
 
 ANCHOR_IDENTITY = "identity (default)"
-ANCHOR_WINDOW_END = "return to portrait (experimental)"
-ANCHOR_END_IMAGE = "end image (experimental)"
-ANCHORS = [ANCHOR_IDENTITY, ANCHOR_WINDOW_END, ANCHOR_END_IMAGE]
+ANCHOR_WINDOW_END = "return to portrait"
+ANCHORS = [ANCHOR_IDENTITY, ANCHOR_WINDOW_END]
+
+# Restarts from the portrait, against drift: one in every RESTART_MIN-RESTART_MAX
+# seconds (about every 10 chunks), placed on the quietest moment of the voiceover in
+# that range, which splits the chunk there.
+RESTART_MIN, RESTART_MAX = 30.0, 40.0
+PAUSE_SMOOTH = 5          # frames (0.2 s) of loudness averaged when looking for a pause
+RESTART_TAIL = 3 * FPS    # no restart in the last 3 s: not worth a jump
 
 
 # --------------------------------------------------------------------------- helpers
-def plan_chunks(total, end_split=False):
-    """Split [0, total) frames into (start_frame, keep_frames) spans.
+def plan_restarts(mono16, total, min_seconds=RESTART_MIN, max_seconds=RESTART_MAX):
+    """Frames where the render starts again from the portrait.
 
-    Chunk 0 keeps up to a whole window; every later chunk keeps up to STEP new frames
-    after its OVERLAP lead-in. With end_split, a video that fits in one window is
-    still made of two chunks, because only a continuation window can take a
-    reference image (the end image).
+    Walking from the start, each restart goes on the quietest moment between
+    min_seconds and max_seconds after the previous one (or the start): a pause in the
+    speech, where a jump back to the portrait pose shows least. max_seconds <= 0
+    turns restarts off.
+    """
+    if max_seconds <= 0 or total <= 0:
+        return []
+    lo, hi = sorted((max(1.0, float(min_seconds)), float(max_seconds)))
+    lo_f, hi_f = int(round(lo * FPS)), int(round(hi * FPS))
+    frames = np.zeros(total, dtype=np.float64)
+    usable = min(total, len(mono16) // SAMPLES_PER_FRAME)
+    if usable:
+        audio = mono16[:usable * SAMPLES_PER_FRAME].astype(np.float64)
+        frames[:usable] = np.sqrt((audio.reshape(usable, SAMPLES_PER_FRAME) ** 2).mean(1))
+    loudness = np.convolve(frames, np.ones(PAUSE_SMOOTH) / PAUSE_SMOOTH, mode="same")
+    restarts, last = [], 0
+    while True:
+        first, end = last + lo_f, min(last + hi_f, total - RESTART_TAIL)
+        if first >= end:
+            return restarts
+        last = first + int(np.argmin(loudness[first:end + 1]))
+        restarts.append(last)
+
+
+def plan_chunks(total, restarts=()):
+    """Split [0, total) frames into (start_frame, keep_frames, opens_on_portrait) spans.
+
+    The video is cut into segments at each restart frame. A segment's first chunk opens
+    on the portrait and keeps up to a whole window, as chunk 0 does; every later chunk
+    keeps up to STEP new frames after its OVERLAP lead-in from the chunk before.
     """
     if total <= 0:
         return []
-    spans = [(0, min(WINDOW, total))]
-    pos = spans[0][1]
-    while pos < total:
-        keep = min(STEP, total - pos)
-        spans.append((pos, keep))
-        pos += keep
-    if end_split and len(spans) == 1 and total > OVERLAP:
-        # The second window opens on the first chunk's last OVERLAP frames.
-        first = max(OVERLAP, total - STEP)
-        spans = [(0, first), (first, total - first)]
+    bounds = [0] + sorted(r for r in set(restarts) if 0 < r < total) + [total]
+    spans = []
+    for seg_start, seg_end in zip(bounds, bounds[1:]):
+        keep = min(WINDOW, seg_end - seg_start)
+        spans.append((seg_start, keep, True))
+        pos = seg_start + keep
+        while pos < seg_end:
+            keep = min(STEP, seg_end - pos)
+            spans.append((pos, keep, False))
+            pos += keep
     return spans
 
 
@@ -103,14 +141,14 @@ def latent_index(frame):
     return 0 if frame <= 0 else (frame - 1) // 4 + 1
 
 
-def ref_settings(anchor, trim, keep, is_last):
+def ref_settings(anchor, trim, keep):
     """(ref_frame_index, ref_mask_frame_range) for one continuation window.
 
-    The identity anchor uses upstream's defaults. The experimental anchors place the
-    reference on the window's last written frame with no mask, so that frame is drawn
-    toward the reference picture.
+    The identity anchor uses upstream's defaults. Return to portrait places the
+    reference on the window's last written frame with no mask, so every chunk ends
+    drawn toward the portrait pose.
     """
-    if anchor == ANCHOR_WINDOW_END or (anchor == ANCHOR_END_IMAGE and is_last):
+    if anchor == ANCHOR_WINDOW_END:
         return latent_index(trim + keep - 1), 0
     return REF_INDEX, REF_MASK
 
@@ -252,18 +290,20 @@ def _read_tail(session, chunk_index):
     return None
 
 
-def next_chunk(session, count):
+def next_chunk(session, spans):
     """First chunk of a session that still needs rendering, or None when finished.
 
-    A chunk is done when its mp4 exists and, unless it is the last, so does the tail
-    the next window opens on. The last chunk is redone until a stitch has succeeded,
-    so an interrupted stitch is retried rather than skipped.
+    A chunk is done when its mp4 exists and, if the next chunk continues from it, so
+    does the tail that chunk opens on (a chunk before a restart needs none). The last
+    chunk is redone until a stitch has succeeded, so an interrupted stitch is retried
+    rather than skipped.
     """
     sdir = _session_dir(session)
+    count = len(spans)
     for i in range(count):
         if not os.path.exists(os.path.join(sdir, f"chunk_{i:04d}.mp4")):
             return i
-        if i < count - 1 and _read_tail(session, i) is None:
+        if i < count - 1 and not spans[i + 1][2] and _read_tail(session, i) is None:
             return i
     if os.path.exists(os.path.join(sdir, FINISHED)):
         return None
@@ -315,14 +355,21 @@ class LongCatLongformSplit:
             "required": {
                 "audio": ("AUDIO",),
                 "anchor": (ANCHORS, {
-                    "default": ANCHOR_IDENTITY,
+                    "default": ANCHOR_WINDOW_END,
                     "tooltip": "identity: the portrait is the identity reference at "
                                "upstream's position (frame index 10). return to portrait: "
                                "the reference sits on each window's last frame, pulling "
-                               "every chunk back toward the portrait pose. end image: "
-                               "like identity, but the final chunk is pulled toward the "
-                               "End Image. The two experimental modes are soft; LongCat "
-                               "cannot pin an end frame."}),
+                               "every chunk back toward the portrait pose."}),
+                "restart_min_seconds": ("FLOAT", {
+                    "default": RESTART_MIN, "min": 1.0, "max": 600.0, "step": 1.0,
+                    "tooltip": "Against drift, the render starts again from the "
+                               "portrait once in every restart_min to restart_max "
+                               "seconds, on the quietest moment of the voiceover in that "
+                               "range (a pause), where the small jump shows least."}),
+                "restart_max_seconds": ("FLOAT", {
+                    "default": RESTART_MAX, "min": 0.0, "max": 600.0, "step": 1.0,
+                    "tooltip": "Latest restart after the previous one. 0 turns restarts "
+                               "off: every chunk continues from the one before."}),
             },
             "optional": {
                 # A socket, not a widget: the batch workflows wire the folder node's
@@ -337,7 +384,7 @@ class LongCatLongformSplit:
     RETURN_NAMES = ("audio_chunk", "whisper_audio", "whisper_frames", "num_frames",
                     "overlap", "frames_processed", "ref_frame_index",
                     "ref_mask_frame_range", "trim_start", "keep_frames", "total_chunks",
-                    "use_end_image", "chunk_index")
+                    "opens_on_portrait", "chunk_index")
     FUNCTION = "split"
     CATEGORY = "LongCat Longform"
 
@@ -347,17 +394,20 @@ class LongCatLongformSplit:
         # the session stored in the hidden prompt, not only on visible inputs.
         return float("nan")
 
-    def split(self, audio, anchor=ANCHOR_IDENTITY, session=None, prompt=None):
+    def split(self, audio, anchor=ANCHOR_WINDOW_END, restart_min_seconds=RESTART_MIN,
+              restart_max_seconds=RESTART_MAX, session=None, prompt=None):
         session = session or _session_from_prompt(prompt)
         wav, sr = audio["waveform"], int(audio["sample_rate"])
         total = int(round(wav.shape[-1] * FPS / sr))
-        spans = plan_chunks(total, anchor == ANCHOR_END_IMAGE)
+        mono16, gain = prepared_track(audio)
+        restarts = plan_restarts(mono16, total, restart_min_seconds, restart_max_seconds)
+        spans = plan_chunks(total, restarts)
         if not spans:
             raise RuntimeError("The voiceover is too short to render.")
 
         # The browser-side counter keeps climbing through surplus queue items and
         # never learns that a render finished; the files on disk do.
-        index = next_chunk(session, len(spans))
+        index = next_chunk(session, spans)
         if index is None:
             print(f"{LOG} '{session}' is finished ({len(spans)} chunks) - skipping. "
                   f"Change name_suffix, or delete output/{SESSION_ROOT}/{session}/, "
@@ -366,19 +416,18 @@ class LongCatLongformSplit:
                 raise RuntimeError(f"'{session}' is already finished.")
             return tuple(ExecutionBlocker(None) for _ in self.RETURN_TYPES)
 
-        start, keep = spans[index]
-        is_last = index == len(spans) - 1
-        trim = 0 if index == 0 else OVERLAP
+        start, keep, on_portrait = spans[index]
+        # A chunk that opens on the portrait (chunk 0 and every restart) has a single
+        # conditioning frame and no lead-in; the rest open on the last OVERLAP frames.
+        trim = 0 if on_portrait else OVERLAP
         window = start - trim                 # first frame of the generated window
-        # Chunk 0 opens on the portrait, a single conditioning frame.
-        overlap = 1 if index == 0 else OVERLAP
-        ref_index, ref_mask = ref_settings(anchor, trim, keep, is_last)
+        overlap = 1 if on_portrait else OVERLAP
+        ref_index, ref_mask = ref_settings(anchor, trim, keep)
 
         # Whisper sees two seconds either side; frames_processed tells the extend
         # node where the window starts in that slice (it subtracts the overlap).
         before = min(CONTEXT, window)
         frames = before + WINDOW + CONTEXT
-        mono16, gain = prepared_track(audio)
         whisper = whisper_slice(mono16, gain, window - before, frames)
 
         a = int(round(start * sr / FPS))
@@ -386,22 +435,24 @@ class LongCatLongformSplit:
         chunk_audio = {"waveform": wav[..., a:b], "sample_rate": sr}
 
         if index == 0:
+            where = ", ".join(f"{r / FPS:.1f}s" for r in restarts) or "none"
             print(f"{LOG} '{session}': {total / FPS:.1f}s, {len(spans)} chunks, "
-                  f"anchor={anchor}, loudness gain {gain:.2f}")
+                  f"anchor={anchor}, restarts from the portrait at: {where}, "
+                  f"loudness gain {gain:.2f}")
+        what = "opens on the portrait" if on_portrait else f"lead-in {trim}"
         print(f"{LOG} chunk {index + 1}/{len(spans)}  {start / FPS:.2f}s "
-              f"+{keep / FPS:.2f}s  (window from frame {window}, lead-in {trim}, "
+              f"+{keep / FPS:.2f}s  (window from frame {window}, {what}, "
               f"reference at latent {ref_index})")
         return (chunk_audio, whisper, frames + 1, WINDOW, overlap, before + overlap,
-                ref_index, ref_mask, trim, keep, len(spans),
-                anchor == ANCHOR_END_IMAGE and is_last, index)
+                ref_index, ref_mask, trim, keep, len(spans), on_portrait, index)
 
 
 class LongCatLongformCarry:
     """The window's opening frames and its identity reference.
 
-    Chunk 0 opens on the portrait and has no reference, as in upstream's
-    audio-image-to-video stage. Every later chunk opens on the previous chunk's last
-    13 frames, with the portrait (or, on the final chunk, the end image) as reference.
+    Chunk 0, and every restart against drift, opens on the portrait with no reference,
+    as in upstream's audio-image-to-video stage. Every other chunk opens on the
+    previous chunk's last 13 frames, with the portrait as reference.
     """
 
     @classmethod
@@ -412,12 +463,10 @@ class LongCatLongformCarry:
                 "portrait_latent": ("LATENT",),
                 "chunk_index": ("INT", {"default": 0, "min": 0, "max": 100000,
                                         "tooltip": "Wire from Split."}),
-                "use_end_image": ("BOOLEAN", {"default": False,
-                                              "tooltip": "Wire from Split."}),
+                "opens_on_portrait": ("BOOLEAN", {"default": False,
+                                                  "tooltip": "Wire from Split."}),
             },
             "optional": {
-                "end_latent": ("LATENT", {"tooltip": "Encoded End Image, used as the "
-                                                     "final chunk's reference."}),
                 # Unconnected, the session name is read from the Write node.
                 "session": ("STRING", {"forceInput": True}),
             },
@@ -436,9 +485,11 @@ class LongCatLongformCarry:
         # linked values, so neither can be read here: always run.
         return float("nan")
 
-    def pick(self, portrait, portrait_latent, chunk_index, use_end_image,
-             end_latent=None, session=None, prompt=None):
-        if chunk_index == 0:
+    def pick(self, portrait, portrait_latent, chunk_index, opens_on_portrait=False,
+             session=None, prompt=None):
+        if chunk_index == 0 or opens_on_portrait:
+            if chunk_index:
+                print(f"{LOG} chunk {chunk_index}: restarting from the portrait")
             return (portrait[:1], None)
         tail = _read_tail(session or _session_from_prompt(prompt), chunk_index - 1)
         if tail is None:
@@ -451,11 +502,8 @@ class LongCatLongformCarry:
                 f"Chunk {chunk_index - 1} was rendered at {tail.shape[2]}x{tail.shape[1]}, "
                 f"but the canvas is now {portrait.shape[2]}x{portrait.shape[1]}. Change "
                 f"name_suffix to start a fresh render at the new size.")
-        reference = end_latent if use_end_image and end_latent is not None \
-            else portrait_latent
-        print(f"{LOG} chunk {chunk_index}: continuing from chunk {chunk_index - 1}, "
-              f"reference: {'end image' if reference is end_latent else 'portrait'}")
-        return (torch.from_numpy(tail.astype(np.float32) / 255.0), reference)
+        print(f"{LOG} chunk {chunk_index}: continuing from chunk {chunk_index - 1}")
+        return (torch.from_numpy(tail.astype(np.float32) / 255.0), portrait_latent)
 
 
 class LongCatLongformWrite:
@@ -525,11 +573,10 @@ class LongCatLongformWrite:
         n, h, w, _ = arr.shape
 
         # Keep this chunk's tail for the next window's lead-in, before anything else
-        # can fail. Atomic rename, like the chunk itself.
-        if chunk_index < total_chunks - 1:
-            if n < OVERLAP:
-                raise RuntimeError(f"chunk {chunk_index} keeps {n} frames, fewer than "
-                                   f"the {OVERLAP} the next window opens on.")
+        # can fail. Atomic rename, like the chunk itself. Only a segment's last chunk
+        # can be shorter than the lead-in, and the chunk after it restarts from the
+        # portrait, so it needs no tail.
+        if chunk_index < total_chunks - 1 and n >= OVERLAP:
             tail = _tail_path(session, chunk_index)
             os.makedirs(os.path.dirname(tail), exist_ok=True)
             tmp = tail[:-4] + ".writing.npz"

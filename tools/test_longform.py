@@ -59,40 +59,74 @@ def speech(sr, seconds, seed=0):
 class PlanTests(unittest.TestCase):
     def test_planner_tiles_the_track_in_windows(self):
         rng = random.Random(7)
-        for end_split in (False, True):
-            for total in [1, 12, 13, 14, 50, 92, 93, 94, 173, 174] + \
-                    [rng.randrange(1, 25 * 900) for _ in range(300)]:
-                spans = lc.plan_chunks(total, end_split)
-                pos = 0
-                for i, (start, keep) in enumerate(spans):
-                    self.assertEqual(start, pos)
-                    self.assertGreater(keep, 0)
-                    lead = 0 if i == 0 else lc.OVERLAP
-                    # Every window is 93 frames: lead-in plus kept frames fit inside it.
-                    self.assertLessEqual(lead + keep, lc.WINDOW)
-                    if i < len(spans) - 1:
-                        # The next window opens on this chunk's last 13 frames.
-                        self.assertGreaterEqual(keep, lc.OVERLAP)
-                    pos += keep
-                self.assertEqual(pos, total)
-                if end_split and total > lc.OVERLAP:
-                    self.assertGreaterEqual(len(spans), 2, total)
+        cases = [(t, []) for t in (1, 12, 13, 14, 50, 92, 93, 94, 173, 174)]
+        for _ in range(300):
+            total = rng.randrange(1, 25 * 900)
+            restarts = sorted(rng.sample(range(1, total), min(total - 1, rng.randrange(0, 6))))
+            cases.append((total, restarts))
+        for total, restarts in cases:
+            spans = lc.plan_chunks(total, restarts)
+            self.assertTrue(spans[0][2], "chunk 0 opens on the portrait")
+            self.assertEqual([s for s, _, on in spans if on], [0] + restarts)
+            pos = 0
+            for i, (start, keep, on_portrait) in enumerate(spans):
+                self.assertEqual(start, pos)
+                self.assertGreater(keep, 0)
+                lead = 0 if on_portrait else lc.OVERLAP
+                # Every window is 93 frames: lead-in plus kept frames fit inside it.
+                self.assertLessEqual(lead + keep, lc.WINDOW)
+                if i < len(spans) - 1 and not spans[i + 1][2]:
+                    # The next window opens on this chunk's last 13 frames.
+                    self.assertGreaterEqual(keep, lc.OVERLAP)
+                pos += keep
+            self.assertEqual(pos, total)
 
     def test_upstream_segment_arithmetic(self):
         # Upstream: segment 0 keeps 93 frames, each continuation adds 93 - 13 = 80.
         spans = lc.plan_chunks(93 + 80 * 4)
-        self.assertEqual(spans, [(0, 93), (93, 80), (173, 80), (253, 80), (333, 80)])
+        self.assertEqual(spans, [(0, 93, True), (93, 80, False), (173, 80, False),
+                                 (253, 80, False), (333, 80, False)])
         # A 7-minute voiceover.
         self.assertEqual(len(lc.plan_chunks(7 * 60 * 25)), 1 + math.ceil((10500 - 93) / 80))
+        # A restart starts a new segment: a whole window again, then continuations.
+        self.assertEqual(lc.plan_chunks(300, [200]),
+                         [(0, 93, True), (93, 80, False), (173, 27, False),
+                          (200, 93, True), (293, 7, False)])
+
+    def test_restarts_land_on_pauses_30_to_40_seconds_apart(self):
+        sr, seconds = 16000, 140
+        rng = np.random.default_rng(3)
+        wave = rng.standard_normal(sr * seconds).astype(np.float32) * 0.1
+        pauses = [(33.0, 33.6), (38.0, 38.4), (71.2, 71.9), (108.0, 108.5)]
+        for a, b in pauses:   # silent gaps the planner should pick
+            wave[int(a * sr):int(b * sr)] *= 0.001
+        total = seconds * 25
+        restarts = lc.plan_restarts(wave, total)
+        self.assertEqual(lc.RESTART_MIN, 30.0)
+        self.assertEqual(lc.RESTART_MAX, 40.0)
+        last = 0
+        for r in restarts:
+            self.assertTrue(30 * 25 <= r - last <= 40 * 25, (r, last))
+            self.assertTrue(any(a * 25 <= r <= b * 25 for a, b in pauses), r / 25)
+            last = r
+        self.assertEqual(len(restarts), 3)  # 33, 71, 108 s; none in the last 3 s
+        self.assertLess(restarts[-1], total - lc.RESTART_TAIL)
+        self.assertEqual(lc.plan_restarts(wave, total, 30, 0), [])     # off
+        self.assertEqual(lc.plan_restarts(wave, 25 * 25), [])          # under 30 s
+        # No pause at all: still restarts, inside the window.
+        loud = rng.standard_normal(sr * 90).astype(np.float32) * 0.1
+        for r in lc.plan_restarts(loud, 90 * 25):
+            self.assertTrue(30 * 25 <= r <= 40 * 25 or r > 40 * 25)
 
     def test_reference_positions(self):
-        self.assertEqual(lc.ref_settings(lc.ANCHOR_IDENTITY, 13, 80, True), (10, 3))
-        self.assertEqual(lc.ref_settings(lc.ANCHOR_END_IMAGE, 13, 80, False), (10, 3))
+        self.assertEqual(lc.ref_settings(lc.ANCHOR_IDENTITY, 13, 80), (10, 3))
         # Frame 92 of a window is its last latent (1 + 23 * 4 frames -> latent 23).
-        self.assertEqual(lc.ref_settings(lc.ANCHOR_WINDOW_END, 13, 80, False), (23, 0))
-        self.assertEqual(lc.ref_settings(lc.ANCHOR_END_IMAGE, 13, 20, True), (8, 0))
+        self.assertEqual(lc.ref_settings(lc.ANCHOR_WINDOW_END, 13, 80), (23, 0))
+        self.assertEqual(lc.ref_settings(lc.ANCHOR_WINDOW_END, 13, 20), (8, 0))
         self.assertEqual([lc.latent_index(f) for f in (0, 1, 4, 5, 8, 9, 92)],
                          [0, 1, 1, 2, 2, 3, 23])
+        self.assertEqual(lc.ANCHORS, [lc.ANCHOR_IDENTITY, lc.ANCHOR_WINDOW_END])
+        self.assertNotIn("experimental", " ".join(lc.ANCHORS))
 
     def test_distill_sigmas_match_upstream_v15(self):
         # LongCat-Video pipeline_longcat_video_avatar.get_timesteps_sigmas(use_distill,
@@ -141,18 +175,22 @@ class SplitTests(unittest.TestCase):
         audio = speech(sr, 20)
         mono16, gain = lc.prepared_track(audio)
         self.assertGreater(gain, 1.0)   # quiet fixture is raised toward -23 LUFS
-        spans = lc.plan_chunks(20 * 25)
+        # A restart every 5-8 s here, so a 20 s clip has some.
+        spans = lc.plan_chunks(20 * 25, lc.plan_restarts(mono16, 20 * 25, 5, 8))
+        self.assertGreater(sum(on for _, _, on in spans), 1)
         with contextlib.redirect_stdout(io.StringIO()):
-            for index, (start, keep) in enumerate(spans):
+            for index, (start, keep, on_portrait) in enumerate(spans):
                 self.mark_done("test", index)
-                out = lc.LongCatLongformSplit().split(audio, prompt=self.prompt())
+                out = lc.LongCatLongformSplit().split(audio, lc.ANCHOR_IDENTITY, 5, 8,
+                                                      prompt=self.prompt())
                 (chunk, whisper, wframes, nframes, overlap, processed, ref_index,
-                 ref_mask, trim, kept, total, use_end, picked) = out
+                 ref_mask, trim, kept, total, opens, picked) = out
                 self.assertEqual((picked, kept, total), (index, keep, len(spans)))
                 self.assertEqual(nframes, lc.WINDOW)
-                self.assertEqual(trim, 0 if index == 0 else 13)
-                self.assertEqual(overlap, 1 if index == 0 else 13)
-                self.assertEqual((ref_index, ref_mask, use_end), (10, 3, False))
+                self.assertEqual(opens, on_portrait)
+                self.assertEqual(trim, 0 if on_portrait else 13)
+                self.assertEqual(overlap, 1 if on_portrait else 13)
+                self.assertEqual((ref_index, ref_mask), (10, 3))
                 # The kept slice of the original track, sample-exact.
                 a, b = round(start * sr / 25), min(audio["waveform"].shape[-1],
                                                    round((start + keep) * sr / 25))
@@ -176,25 +214,13 @@ class SplitTests(unittest.TestCase):
                 np.testing.assert_allclose(w[0, 0, :len(ref)].numpy(), ref, atol=1e-6)
                 self.assertTrue((w[0, 0, len(ref):] == 0).all())
 
-    def test_anchor_modes(self):
+    def test_return_to_portrait_is_the_default(self):
         audio = speech(16000, 10)
         with contextlib.redirect_stdout(io.StringIO()):
             self.mark_done("anchored", 1)
-            out = lc.LongCatLongformSplit().split(audio, lc.ANCHOR_WINDOW_END,
-                                                  prompt=self.prompt("anchored"))
+            out = lc.LongCatLongformSplit().split(audio, prompt=self.prompt("anchored"))
             self.assertEqual(out[6:8], (23, 0))
-            self.assertFalse(out[11])
-            # End image on a short clip: forced into two chunks, the last pulled.
-            short = speech(16000, 2)
-            out = lc.LongCatLongformSplit().split(short, lc.ANCHOR_END_IMAGE,
-                                                  prompt=self.prompt("short"))
-            self.assertEqual((out[9], out[10], out[12]), (13, 2, 0))
-            self.mark_done("short", 1)
-            out = lc.LongCatLongformSplit().split(short, lc.ANCHOR_END_IMAGE,
-                                                  prompt=self.prompt("short"))
-            self.assertEqual(out[12], 1)
-            self.assertTrue(out[11])
-            self.assertEqual(out[6:8], (lc.latent_index(13 + 37 - 1), 0))
+            self.assertFalse(out[11])   # no restart in a 10 s clip
 
     def test_loudness_gain_is_one_value_for_the_whole_track(self):
         loud = speech(48000, 12)
@@ -257,7 +283,6 @@ class RenderTests(unittest.TestCase):
         lc._track.clear()
         self.portrait = torch.full((1, 16, 16, 3), 0.5)
         self.portrait_latent = {"samples": torch.zeros(1, 16, 1, 2, 2)}
-        self.end_latent = {"samples": torch.ones(1, 16, 1, 2, 2)}
 
     def probe(self, path, *args):
         return json.loads(subprocess.check_output([
@@ -268,27 +293,33 @@ class RenderTests(unittest.TestCase):
                           "-show_entries", "stream=nb_read_frames")
         return int(info["streams"][0]["nb_read_frames"])
 
-    def item(self, audio, session, filename, anchor=lc.ANCHOR_IDENTITY, end_latent=None,
+    def item(self, audio, session, filename, anchor=lc.ANCHOR_IDENTITY, restart=(30, 40),
              batch_session=None):
         """One queue item. The 'sampler' paints each window frame with its global index
         so continuity and trimming can be checked in the written files."""
         prompt = {"70": {"class_type": "LongCatLongformWrite", "inputs": {"session": session}}}
-        out = lc.LongCatLongformSplit().split(audio, anchor, session=batch_session,
-                                              prompt=prompt)
+        out = lc.LongCatLongformSplit().split(audio, anchor, *restart,
+                                              session=batch_session, prompt=prompt)
         if isinstance(out[0], ExecutionBlocker):
             return None
-        (chunk, _, _, nframes, _, _, _, _, trim, keep, total, use_end, index) = out
+        (chunk, _, _, nframes, _, _, _, _, trim, keep, total, opens, index) = out
         prev, ref = lc.LongCatLongformCarry().pick(
-            self.portrait, self.portrait_latent, index, use_end, end_latent,
+            self.portrait, self.portrait_latent, index, opens,
             session=batch_session, prompt=prompt)
-        if index == 0:
+        if opens:
+            # Chunk 0 and every restart: the portrait alone, no reference. The fake
+            # sampler then paints from this chunk's own start frame.
             self.assertEqual(prev.shape[0], 1)
             self.assertIsNone(ref)
-            window_start = 0
+            mono16, _ = lc.prepared_track(audio)
+            frames_total = int(round(audio["waveform"].shape[-1] * 25
+                                     / audio["sample_rate"]))
+            spans = lc.plan_chunks(frames_total, lc.plan_restarts(mono16, frames_total,
+                                                                  *restart))
+            window_start = spans[index][0]
         else:
             self.assertEqual(prev.shape[0], lc.OVERLAP)
-            self.assertIs(ref, end_latent if use_end and end_latent is not None
-                          else self.portrait_latent)
+            self.assertIs(ref, self.portrait_latent)
             # The lead-in is the previous chunk's last 13 written frames.
             window_start = int(round(prev[0, 0, 0, 0].item() * 255))
         values = torch.arange(window_start, window_start + nframes).float() % 256 / 255
@@ -297,7 +328,7 @@ class RenderTests(unittest.TestCase):
         lc.LongCatLongformWrite().write(images, audio, index, total, keep,
                                         batch_session or session, filename, chunk, False,
                                         trim)
-        return index, total, use_end
+        return index, total, opens
 
     def test_continuation_render_stitch_and_resume(self):
         sr, seconds = 44100, 13
@@ -314,7 +345,7 @@ class RenderTests(unittest.TestCase):
         spans = lc.plan_chunks(total)
         self.assertEqual([d[0] for d in done], list(range(len(spans))))
         sdir = Path(lc._session_dir("speaker's take"))
-        for i, (_, keep) in enumerate(spans):
+        for i, (_, keep, _) in enumerate(spans):
             self.assertEqual(self.frames(sdir / f"chunk_{i:04d}.mp4"), keep)
         final = Path(self.tmp.name) / "final.mp4"
         info = self.probe(final, "-count_frames", "-show_entries",
@@ -356,18 +387,31 @@ class RenderTests(unittest.TestCase):
             lc.LongCatLongformCarry().pick(self.portrait, self.portrait_latent, 1, False,
                                            prompt={})
 
-    def test_end_image_reaches_only_the_final_chunk(self):
-        audio = speech(24000, 9)
+    def test_restarts_open_on_the_portrait_and_stitch_exactly(self):
+        # 75 s with restarts on: two segments restart from the portrait, every frame
+        # still lands once, in order, and the video is exactly as long as the audio.
+        sr, seconds = 16000, 75
+        audio = speech(sr, seconds)
         seen = []
         with contextlib.redirect_stdout(io.StringIO()):
             while True:
-                r = self.item(audio, "ending", "ending.mp4", lc.ANCHOR_END_IMAGE,
-                              self.end_latent)
+                r = self.item(audio, "refresh", "refresh.mp4", lc.ANCHOR_WINDOW_END)
                 if r is None:
                     break
                 seen.append(r)
-        self.assertEqual([u for _, _, u in seen], [False] * (len(seen) - 1) + [True])
-        self.assertEqual(self.frames(Path(self.tmp.name) / "ending.mp4"), 9 * 25)
+                self.assertLess(len(seen), 40)
+        mono16, _ = lc.prepared_track(audio)
+        restarts = lc.plan_restarts(mono16, seconds * 25)
+        self.assertEqual(len(restarts), 2)
+        spans = lc.plan_chunks(seconds * 25, restarts)
+        self.assertEqual([o for _, _, o in seen], [on for _, _, on in spans])
+        final = Path(self.tmp.name) / "refresh.mp4"
+        self.assertEqual(self.frames(final), seconds * 25)
+        raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(final), "-f",
+                                       "rawvideo", "-pix_fmt", "rgb24", "-"])
+        got = np.frombuffer(raw, np.uint8).reshape(seconds * 25, -1)[:, 0].astype(int)
+        diff = np.abs(got - np.arange(seconds * 25) % 256)
+        self.assertLessEqual(int(np.minimum(diff, 256 - diff).max()), 3)
 
     def test_batch_folder_renders_each_file_once_in_name_order(self):
         folder = Path(self.tmp.name) / "input" / "batch_audio"

@@ -159,7 +159,7 @@ class WorkflowTests(unittest.TestCase):
                     (53, "portrait"): (50, "IMAGE"),
                     (53, "portrait_latent"): (51, "samples"),
                     (53, "chunk_index"): (20, "chunk_index"),
-                    (53, "use_end_image"): (20, "use_end_image"),
+                    (53, "opens_on_portrait"): (20, "opens_on_portrait"),
                     (57, "positive_prompt"): (30, "prompt"),
                     (60, "text_embeds"): (57, "text_embeds"),
                     (60, "image_embeds"): (56, "image_embeds"),
@@ -177,10 +177,6 @@ class WorkflowTests(unittest.TestCase):
                 for name in ("num_frames", "overlap", "frames_processed", "ref_frame_index",
                              "ref_mask_frame_range"):
                     expected[(56, name)] = (20, name)
-                if v["end_image"]:
-                    expected[(53, "end_latent")] = (52, "samples")
-                    expected[(52, "image")] = (54, "IMAGE")
-                    expected[(54, "image")] = (12, "IMAGE")
                 if w["batch"]:
                     for dst in (20, 53, 70):
                         expected[(dst, "session")] = (11, "name")
@@ -195,8 +191,8 @@ class WorkflowTests(unittest.TestCase):
                     for inp in node["inputs"]:
                         if "widget" not in inp and "shape" not in inp:
                             self.assertIsNotNone(inp["link"], (node["type"], inp["name"]))
-                if not v["end_image"]:
-                    self.assertNotIn((53, "end_latent"), links)
+                # One portrait: no second image anywhere in the graph.
+                self.assertEqual(sum(n["type"] == "LoadImage" for n in nodes.values()), 1)
 
     def test_variant_settings(self):
         for w, wf, nodes in self.each():
@@ -205,7 +201,13 @@ class WorkflowTests(unittest.TestCase):
             for n in nodes.values():
                 by_type.setdefault(n["type"], []).append(n)
             with self.subTest(workflow=w["path"]):
-                self.assertEqual(nodes[20]["widgets_values"], [v["anchor"]])
+                # Return to portrait, with a restart from the portrait every 30-40 s.
+                self.assertEqual(nodes[20]["widgets_values"],
+                                 [v["anchor"], builder.RESTART_MIN, builder.RESTART_MAX])
+                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX), (30.0, 40.0))
+                self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX),
+                                 (lc.RESTART_MIN, lc.RESTART_MAX))
+                self.assertEqual(v["anchor"], lc.ANCHOR_WINDOW_END)
                 self.assertEqual(nodes[13]["widgets_values"][0], v["canvas"])
                 self.assertEqual(nodes[14]["widgets_values"][0], v["canvas"])
                 self.assertEqual(v["canvas"] % 16, 0)
@@ -232,7 +234,7 @@ class WorkflowTests(unittest.TestCase):
                 suffix = (nodes[11]["widgets_values"][1] if w["batch"]
                           else nodes[21]["widgets_values"][2])
                 self.assertEqual(suffix, v["suffix"])
-                self.assertEqual(len(by_type["LoadImage"]), 2 if v["end_image"] else 1)
+                self.assertEqual(len(by_type["LoadImage"]), 1)
                 # Every workflow opens on the shipped samples.
                 for image in by_type["LoadImage"]:
                     self.assertEqual(image["widgets_values"][0], builder.SAMPLE_PORTRAIT)
