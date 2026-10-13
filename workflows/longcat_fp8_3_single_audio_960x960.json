@@ -207,7 +207,7 @@
    },
    "title": "About stage 6",
    "widgets_values": [
-    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), turn on `enable_vae_tiling` on the decode node, or use the FP8 version of this workflow."
+    "## 6. Sampling + decode\n\nFixed seed, 8 steps, cfg 1 and audio cfg 1, as upstream runs the distilled v1.5 model. Nothing to set here.\n\nOut of memory? Enable Block Swap (stage 4), or turn on `enable_vae_tiling` on the decode node."
    ],
    "color": "#222",
    "bgcolor": "#000"
