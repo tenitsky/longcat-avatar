@@ -55,9 +55,9 @@ MODEL_FP8 = "LongCat-Avatar-15_fp8_e4m3fn.safetensors"
 
 ANCHOR_IDENTITY = "identity (default)"
 ANCHOR_WINDOW_END = "return to portrait"
-# Restarts from the portrait against drift: one in every 20-40 s, in the middle of a
+# Restarts from the portrait against drift: one in every 40-60 s, in the middle of a
 # real pause (0.4 s+ of near-silence) planned from the whole voiceover.
-RESTART_MIN, RESTART_MAX = 20.0, 40.0
+RESTART_MIN, RESTART_MAX = 40.0, 60.0
 MIN_PAUSE = 0.4
 WINDOW = 93
 
@@ -68,7 +68,7 @@ VARIANTS = {
         title="640 x 640",
         summary="640 x 640 (LongCat's 480p tier). " + "Every 3.2 s chunk continues from the one before, with the portrait as "
                 "identity reference on each window's last frame, pulling every chunk "
-                "back toward the portrait pose. Every 20-40 s, in the middle of a real "
+                "back toward the portrait pose. Every 40-60 s, in the middle of a real "
                 "pause in the speech (mouth shut), the render starts again from the "
                 "portrait itself: a full refresh against the noise that otherwise grows "
                 "from chunk to chunk.",
@@ -78,7 +78,7 @@ VARIANTS = {
         summary="960 x 960 (LongCat's 720p tier), high quality: about 2.3 times the "
                 "rendering time of 640. " + "Every 3.2 s chunk continues from the one before, with the portrait as "
                 "identity reference on each window's last frame, pulling every chunk "
-                "back toward the portrait pose. Every 20-40 s, in the middle of a real "
+                "back toward the portrait pose. Every 40-60 s, in the middle of a real "
                 "pause in the speech (mouth shut), the render starts again from the "
                 "portrait itself: a full refresh against the noise that otherwise grows "
                 "from chunk to chunk.",
@@ -143,7 +143,7 @@ It generates **93-frame windows at 25 fps** (3.7 s). Long videos are **video con
 
 **No end frame.** Conditioning frames always sit at the start of a window. Return to Portrait uses the one lever there is: the position of the identity reference inside the window.
 
-**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 20-40 s, in the middle of a real pause in the speech, a chunk starts again from the portrait as the first one does.
+**Restarts against drift.** Continuation alone drifts over long videos: small noise in the carried frames grows from chunk to chunk. So once in every 40-60 s, in the middle of a real pause in the speech, a chunk starts again from the portrait as the first one does.
 
 Model card: https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5"""
 
@@ -186,7 +186,7 @@ The voiceover is cut into **windows of 93 frames** (3.72 s at 25 fps). Chunk 1 k
 
 **Each run renders the next unfinished chunk**, found from the files on disk. There is no counter to reset: a new voiceover starts at chunk 1 in its own folder, and an interrupted render continues where it stopped. Chunks must render **in order**.
 
-**Restarts against drift.** Before the first chunk, the whole voiceover is scanned for **real pauses**: at least `min_pause_seconds` (0.4 s) of near-silence, mouth shut. Once in every **20-40 s** (`restart_min_seconds` / `restart_max_seconds`), a chunk opens on the **portrait** again, exactly as chunk 1 does, placed in the middle of the longest real pause in that range. With no real pause there, the next one within 20 s is used rather than cutting into speech. It costs a small jump in a silence and brings the face back to the portrait. The plan is listed in the log on the first chunk and saved as `restart_plan.txt` next to the chunks. Set `restart_max_seconds` to 0 to turn restarts off.
+**Restarts against drift.** Before the first chunk, the whole voiceover is scanned for **real pauses**: at least `min_pause_seconds` (0.4 s) of near-silence, mouth shut. Once in every **40-60 s** (`restart_min_seconds` / `restart_max_seconds`), a chunk opens on the **portrait** again, exactly as chunk 1 does, placed in the middle of the longest real pause in that range. With no real pause there, the next one within 20 s is used rather than cutting into speech. It costs a small jump in a silence and brings the face back to the portrait. The plan is listed in the log on the first chunk and saved as `restart_plan.txt` next to the chunks. Set `restart_max_seconds` to 0 to turn restarts off.
 
 {anchor} You can switch the anchor here on any workflow; use a new `name_suffix` when you do.
 

@@ -28,7 +28,7 @@ Jupyter has no login by default; anyone with its URL can run commands. For a log
 
 The final video lands in ComfyUI/output. To resume, queue again.
 
-**Against drift:** every chunk is pulled back toward the portrait, and every 20-40 s, in the middle of a real pause (mouth shut), the render restarts from the portrait itself. The cuts are planned from the voiceover up front.
+**Against drift:** every chunk is pulled back toward the portrait, and every 40-60 s, in the middle of a real pause (mouth shut), the render restarts from the portrait itself. The cuts are planned from the voiceover up front.
 
 ## Hardware
 

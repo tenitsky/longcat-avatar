@@ -22,7 +22,7 @@ How LongCat differs from H3:
     window's last frame, which is the closest LongCat gets to an end frame: a soft pull
     toward that image, not a pinned frame.
   * Restarts against drift. Continuation alone drifts over long videos: small noise
-    in the carried frames grows from chunk to chunk. So once in every 20-40 s a chunk
+    in the carried frames grows from chunk to chunk. So once in every 40-60 s a chunk
     opens on the portrait again instead of the previous frames, exactly as chunk 0
     does. The restarts are planned from the whole voiceover before rendering: each
     goes in the middle of the longest real pause (0.4 s+ of near-silence, mouth shut)
@@ -83,7 +83,7 @@ ANCHORS = [ANCHOR_IDENTITY, ANCHOR_WINDOW_END]
 # Restarts from the portrait, against drift: one in every RESTART_MIN-RESTART_MAX
 # seconds, placed in the middle of a real pause in the speech (mouth shut), found in
 # the whole voiceover before rendering starts.
-RESTART_MIN, RESTART_MAX = 20.0, 40.0
+RESTART_MIN, RESTART_MAX = 40.0, 60.0
 MIN_PAUSE = 0.4           # seconds of near-silence that count as a real pause
 PAUSE_SEARCH_EXTRA = 20.0  # look this much past RESTART_MAX for a real pause
 RESTART_TAIL = 3 * FPS    # no restart in the last 3 s: not worth a jump

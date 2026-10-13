@@ -148,7 +148,7 @@ HF_TOKEN=
 #   longcat_fp8_...                       the same four with the FP8 model
 # BF16: Block Swap off (80 GB GPUs). FP8: Block Swap on (32-48 GB GPUs).
 # All: portrait pulled back into every chunk, plus a full restart from the portrait
-# every 20-40 s in the middle of a real pause (0.4 s+), planned up front.
+# every 40-60 s in the middle of a real pause (0.4 s+), planned up front.
 
 
 # ------------------------------------------------------------------------------

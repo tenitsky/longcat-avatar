@@ -58,7 +58,7 @@ Continuation drifts over long videos: small noise in the carried frames grows fr
 chunk to chunk. Before the first chunk, Split finds every real pause in the voiceover
 (`min_pause_seconds`, 0.4 s, of near-silence against the recording's own floor and
 speech level) and plans a restart in the middle of the longest real pause in every
-`restart_min_seconds` to `restart_max_seconds` (20-40 s) window, or the next real pause
+`restart_min_seconds` to `restart_max_seconds` (40-60 s) window, or the next real pause
 within 20 s, never in the last 3 s. The chunk starting there opens on the portrait,
 exactly like chunk 0 (one conditioning frame, no reference, a whole window), and the
 chunk before it ends in the pause. The plan is logged and saved as `restart_plan.txt` in

@@ -26,7 +26,7 @@ Because every chunk continues from the one before, **joins are seamless**: there
 pose reset every few seconds. The price is that chunks must render **in order**, a
 7-minute voiceover is about 130 chunks, and continuation **drifts** over long videos,
 which the workflows counter with a restart from the portrait at a pause every
-20-40 s.
+40-60 s.
 
 ### Pulling back to the portrait, and restarts against drift
 
@@ -39,7 +39,7 @@ face together best.
 
 Continuation still drifts over long videos: small noise in the 13 carried frames grows
 from chunk to chunk. So the workflows **restart from the portrait** once in every
-**20-40 s**: the chunk starting there opens on the portrait itself, exactly as the first
+**40-60 s**: the chunk starting there opens on the portrait itself, exactly as the first
 chunk does, instead of on the previous frames. That is a full refresh of the face.
 
 The restarts are **planned from the whole voiceover before rendering starts**, and only
@@ -48,16 +48,17 @@ go where the mouth is shut:
 1. Every **real pause** is found first: at least `min_pause_seconds` (**0.4 s**) of
    near-silence, measured against the recording's own speech and noise levels. Short
    gaps between words do not count.
-2. Each restart goes **in the middle of the longest real pause** 20-40 s after the
-   previous one, so it is silent on both sides of the cut.
+2. Each restart goes **in the middle of the longest real pause** 40-60 s after the
+   previous one, so it is silent on both sides of the cut. The face drifts only slowly,
+   so a restart about once a minute keeps it true with as few jumps as possible.
 3. If that window has no real pause, the **next real pause within 20 s** is used rather
    than cutting into speech. Only when there is none at all does a shorter gap get it
    (flagged in the plan).
 
 The plan (time, pause length, how it was chosen) is printed in the log on the first
 chunk and saved as `output/longcat_longform/<name>/restart_plan.txt`. On the 71 s sample
-voiceover, whose pauses between 20 and 40 s are all under 0.4 s, the single restart
-lands at 51.2 s, in the middle of a 0.44 s pause.
+voiceover, the single restart lands at 51.2 s, in the middle of a 0.44 s pause, the only
+real pause between 40 and 60 s.
 
 `restart_min_seconds`, `restart_max_seconds` and `min_pause_seconds` are on the **Split**
 node; `restart_max_seconds = 0` turns restarts off.
@@ -244,7 +245,7 @@ output-name node, or delete its folder under `output/longcat_longform/`.
 **BF16** loads the full-precision model with Block Swap off (80 GB GPUs); **FP8** loads
 the FP8 model with Block Swap on, 20 of 48 blocks (32-48 GB GPUs). 960 × 960 takes about
 2.3 times as long per chunk as 640. Every workflow pulls each chunk back toward the
-portrait and restarts from it at a real pause every 20-40 s.
+portrait and restarts from it at a real pause every 40-60 s.
 
 Videos are saved as `output/<audio name>_bf16_640.mp4` (or `_fp8_960`, …), so renders of
 the same voiceover at another precision or size sit side by side and never resume each
@@ -275,7 +276,7 @@ later are picked up on the next run.
   **Every later chunk** opens on the previous chunk's last 13 written frames, re-encoded
   through the VAE the way v1.5 does it, and keeps the 80 new frames after them. Nothing
   plays twice. The 13-frame tails are kept under `.carry/` for resume.
-- **A restart** (every 20-40 s, in the middle of a real pause) is a chunk that opens on
+- **A restart** (every 40-60 s, in the middle of a real pause) is a chunk that opens on
   the portrait again and keeps up to a whole window, exactly like chunk 1. The chunk
   before it simply ends in the pause, however short that makes it.
 - On every continuing chunk, the portrait is also the **identity reference**, on the

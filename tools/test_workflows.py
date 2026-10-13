@@ -201,13 +201,13 @@ class WorkflowTests(unittest.TestCase):
             for n in nodes.values():
                 by_type.setdefault(n["type"], []).append(n)
             with self.subTest(workflow=w["path"]):
-                # Return to portrait, with a restart from the portrait every 20-40 s,
+                # Return to portrait, with a restart from the portrait every 40-60 s,
                 # in a real pause of 0.4 s or more.
                 self.assertEqual(nodes[20]["widgets_values"],
                                  [v["anchor"], builder.RESTART_MIN, builder.RESTART_MAX,
                                   builder.MIN_PAUSE])
                 self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX,
-                                  builder.MIN_PAUSE), (20.0, 40.0, 0.4))
+                                  builder.MIN_PAUSE), (40.0, 60.0, 0.4))
                 self.assertEqual((builder.RESTART_MIN, builder.RESTART_MAX, builder.MIN_PAUSE),
                                  (lc.RESTART_MIN, lc.RESTART_MAX, lc.MIN_PAUSE))
                 self.assertEqual(v["anchor"], lc.ANCHOR_WINDOW_END)

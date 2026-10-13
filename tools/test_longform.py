@@ -107,34 +107,34 @@ class PlanTests(unittest.TestCase):
             wave[int(start * sr):int((start + length) * sr)] *= 0.001
         return wave
 
-    def test_restarts_go_in_the_middle_of_the_longest_real_pause_20_to_40_s_apart(self):
-        self.assertEqual((lc.RESTART_MIN, lc.RESTART_MAX, lc.MIN_PAUSE), (20.0, 40.0, 0.4))
-        pauses = [(27.1, 0.6), (33.1, 0.9), (70.1, 0.6), (105.1, 0.6)]
-        wave = self.talk(125, pauses)   # 125 s: a fourth window would start too late
-        total = 125 * 25
+    def test_restarts_go_in_the_middle_of_the_longest_real_pause_40_to_60_s_apart(self):
+        self.assertEqual((lc.RESTART_MIN, lc.RESTART_MAX, lc.MIN_PAUSE), (40.0, 60.0, 0.4))
+        pauses = [(47.1, 0.6), (53.1, 0.9), (105.1, 0.6), (160.1, 0.6)]
+        wave = self.talk(185, pauses)   # 185 s: a fourth window would start too late
+        total = 185 * 25
         plan = lc.plan_restarts(wave, total, details=True)
-        # The longest real pause in [20, 40] s is the 0.9 s one at 33.1 s, not 27.1 s;
+        # The longest real pause in [40, 60] s is the 0.9 s one at 53.1 s, not 47.1 s;
         # each cut sits in the middle of its pause.
         self.assertEqual(len(plan), 3)
-        for (frame, _, _), mid in zip(plan, (33.55, 70.4, 105.4)):
+        for (frame, _, _), mid in zip(plan, (53.55, 105.4, 160.4)):
             self.assertAlmostEqual(frame / 25, mid, delta=0.1)
         last = 0
         for frame, length, how in plan:
             self.assertEqual(how, "pause")
             self.assertGreaterEqual(length, 0.4)
             self.assertTrue(any(a * 25 < frame < (a + l) * 25 for a, l in pauses), frame)
-            self.assertTrue(20 * 25 <= frame - last <= 40 * 25)
+            self.assertTrue(40 * 25 <= frame - last <= 60 * 25)
             last = frame
         self.assertLess(plan[-1][0], total - lc.RESTART_TAIL)
         # Never inside the short gaps between phrases while real pauses exist.
-        self.assertEqual(lc.plan_restarts(wave, total, 20, 0), [])          # off
-        self.assertEqual(lc.plan_restarts(wave[:19 * 16000], 19 * 25), [])  # too short
+        self.assertEqual(lc.plan_restarts(wave, total, 40, 0), [])          # off
+        self.assertEqual(lc.plan_restarts(wave[:39 * 16000], 39 * 25), [])  # too short
 
     def test_without_a_real_pause_in_the_window_the_next_one_is_used(self):
-        wave = self.talk(90, [(51.0, 0.5)])
-        plan = lc.plan_restarts(wave, 90 * 25, details=True)
+        wave = self.talk(120, [(71.0, 0.5)])
+        plan = lc.plan_restarts(wave, 120 * 25, details=True)
         self.assertEqual(plan[0][2], "pause after the window")
-        self.assertTrue(51.0 * 25 < plan[0][0] < 51.5 * 25)
+        self.assertTrue(71.0 * 25 < plan[0][0] < 71.5 * 25)
 
     def test_fallbacks_when_the_speech_never_pauses_long(self):
         # Only the 0.2 s gaps: the longest of those in the window, flagged.
@@ -146,7 +146,7 @@ class PlanTests(unittest.TestCase):
         loud = rng.standard_normal(16000 * 70).astype(np.float32) * 0.1
         plan = lc.plan_restarts(loud, 70 * 25, details=True)
         self.assertTrue(plan)
-        self.assertTrue(all(20 * 25 <= f <= 40 * 25 or how != "no gap: quietest frame"
+        self.assertTrue(all(40 * 25 <= f <= 60 * 25 or how != "no gap: quietest frame"
                             for f, _, how in plan[:1]))
 
     def test_pause_detection_adapts_to_the_recording_level(self):
@@ -427,20 +427,22 @@ class RenderTests(unittest.TestCase):
                                            prompt={})
 
     def test_restarts_open_on_the_portrait_and_stitch_exactly(self):
-        # 75 s with restarts on: later segments restart from the portrait, every frame
-        # still lands once, in order, and the video is exactly as long as the audio.
-        sr, seconds = 16000, 75
+        # 75 s with restarts every 20-40 s (short, so two restarts fit): later segments
+        # restart from the portrait, every frame still lands once, in order, and the
+        # video is exactly as long as the audio.
+        sr, seconds, restart = 16000, 75, (20.0, 40.0)
         audio = speech(sr, seconds)
         seen = []
         with contextlib.redirect_stdout(io.StringIO()):
             while True:
-                r = self.item(audio, "refresh", "refresh.mp4", lc.ANCHOR_WINDOW_END)
+                r = self.item(audio, "refresh", "refresh.mp4", lc.ANCHOR_WINDOW_END,
+                              restart=restart)
                 if r is None:
                     break
                 seen.append(r)
                 self.assertLess(len(seen), 40)
         mono16, _ = lc.prepared_track(audio)
-        restarts = lc.plan_restarts(mono16, seconds * 25)
+        restarts = lc.plan_restarts(mono16, seconds * 25, *restart)
         self.assertGreaterEqual(len(restarts), 2)
         spans = lc.plan_chunks(seconds * 25, restarts)
         self.assertEqual([o for _, _, o in seen], [on for _, _, on in spans])
