@@ -462,6 +462,10 @@ over, renders what is left and stitches.
 - Every pod must run the same template version and the same workflow settings.
 - Each extra ComfyUI loads its own copy of the model: a pod with several GPUs needs
   system RAM to match (FP8 workflows with Block Swap keep part of the model there).
+  On such a pod every ComfyUI runs with `--cache-classic --disable-pinned-memory` (GPU 0
+  also with `--cuda-device 0`). Without them, each ComfyUI treats the others' memory as
+  RAM pressure and drops its loaded model, so models were reloaded from the volume
+  between chunks. A cache flag of your own in `comfyui_args.txt` takes precedence.
 - Extra pods only help with long voiceovers: each spends a few minutes starting up.
 - `LONGCAT_PARALLEL=0` turns it off: renders stay on the GPU they are queued on, and no
   extra ComfyUI is started.

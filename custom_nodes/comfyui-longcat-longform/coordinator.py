@@ -98,10 +98,24 @@ def extra_args(args_file):
         if skip and not token.startswith("-"):
             skip = False
             continue
-        skip = token.split("=")[0] in ("--listen", "--port")
+        skip = token.split("=")[0] in ("--listen", "--port", "--cuda-device")
         if not skip:
             kept.append(token)
     return kept
+
+
+def shared_pod_args(user_args):
+    """Flags for every ComfyUI on a pod with several GPUs. By default ComfyUI drops
+    cached models when free RAM runs low, and each ComfyUI counts the others' memory as
+    pressure: models were reloaded from the volume for every chunk. Classic caching keeps
+    them loaded. Each ComfyUI would also pin most of the RAM for itself. setup.sh adds the
+    same flags to the ComfyUI on GPU 0. A cache flag of the user's own wins."""
+    flags = []
+    if not any(t.startswith("--cache-") or t == "--high-ram" for t in user_args):
+        flags.append("--cache-classic")
+    if "--disable-pinned-memory" not in user_args:
+        flags.append("--disable-pinned-memory")
+    return flags
 
 
 class Worker:
@@ -133,16 +147,19 @@ class Coordinator:
                 continue
             worker.launched = self.clock()
             temp = os.path.join(self.log_dir, f"comfyui-gpu{worker.gpu}")
+            user = extra_args(self.args_file)
             command = [self.python or sys.executable, "main.py", "--listen", "127.0.0.1",
                        "--port", str(worker.port), "--cuda-device", str(worker.gpu),
-                       "--temp-directory", temp] + extra_args(self.args_file)
+                       "--temp-directory", temp] + shared_pod_args(user) + user
             env = {**os.environ, "LONGCAT_WORKER_ID": worker.id, "PYTHONUNBUFFERED": "1"}
-            out = open(os.path.join(self.log_dir, f"comfyui-gpu{worker.gpu}.log"), "a")
-            worker.process = subprocess.Popen(command, cwd=self.comfy, env=env, stdout=out,
-                                              stderr=subprocess.STDOUT,
-                                              start_new_session=True)
+            path = os.path.join(self.log_dir, f"comfyui-gpu{worker.gpu}.log")
+            # The child keeps its own handle on the log; this one closes.
+            with open(path, "a") as out:
+                worker.process = subprocess.Popen(command, cwd=self.comfy, env=env,
+                                                  stdout=out, stderr=subprocess.STDOUT,
+                                                  start_new_session=True)
             log(f"started ComfyUI for GPU {worker.gpu} on port {worker.port} "
-                f"({worker.id}; log {out.name})")
+                f"({worker.id}; log {path}): {' '.join(command[1:])}")
 
     # ----------------------------------------------------------------- one pass
     def tick(self):

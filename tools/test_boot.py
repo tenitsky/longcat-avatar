@@ -115,6 +115,10 @@ exit 0
 """)
         self.make_executable(self.bin / "ffmpeg", "#!/bin/bash\nexit 0\n")
         self.make_executable(self.bin / "sleep", "#!/bin/bash\nexit 0\n")
+        # GPUs as nvidia-smi lists them; BOOT_GPUS unset = no nvidia-smi output.
+        self.make_executable(self.bin / "nvidia-smi", """#!/bin/bash
+for ((i = 0; i < ${BOOT_GPUS:-0}; i++)); do echo "GPU $i: Fixture GPU (UUID: GPU-$i)"; done
+""")
         # The coordinator is a background service: record how setup starts it rather
         # than leave a process running after the test.
         self.make_executable(self.bin / "nohup", """#!/bin/bash
@@ -185,10 +189,12 @@ exec """ + shlex.quote(real_ln) + ' "$@"\n')
 set -e
 COMFYUI_DIR="{self.workspace}/runpod-slim/ComfyUI"
 DB_FILE="{self.workspace}/runpod-slim/filebrowser.db"
+FIXED_ARGS="--listen 0.0.0.0 --port 8188 --enable-cors-header"
 start_jupyter() {{
   if [ "${{JUPYTER_DISABLE_AUTH:-}}" = "true" ]; then JUPYTER_TOKEN=""; fi
 }}
 export START_SCRIPT="$0" START_COMFYUI_DIR="$COMFYUI_DIR" START_DB_FILE="$DB_FILE"
+export START_FIXED_ARGS="$FIXED_ARGS"
 # The image service boundary is replaced, not the template's setup script.
 python3 - <<'PY'
 import json, os
@@ -196,7 +202,7 @@ from pathlib import Path
 keys = ('COMFYUI_PATH', 'HF_HOME', 'JUPYTER_CONFIG_DIR', 'JUPYTER_DATA_DIR',
         'JUPYTER_RUNTIME_DIR', 'IPYTHONDIR', 'JUPYTER_DISABLE_AUTH', 'LONGCAT_WORKER_ID',
         'START_SCRIPT',
-        'START_COMFYUI_DIR', 'START_DB_FILE', 'FB_DATABASE')
+        'START_COMFYUI_DIR', 'START_DB_FILE', 'START_FIXED_ARGS', 'FB_DATABASE')
 Path(os.environ['BOOT_HANDOFF']).write_text(json.dumps({{k: os.environ.get(k) for k in keys}}))
 PY
 """)
@@ -542,6 +548,40 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         # With a Global Volume the coordinator runs from the container-disk install and
         # watches renders through its links into the volume.
         self.assertIn(f"--comfy {self.local_comfy} ", self.lines(self.nohup_log)[-1])
+
+    def test_several_gpus_keep_models_loaded(self):
+        base = "--listen 0.0.0.0 --port 8188 --enable-cors-header"
+        # One GPU: the image's own start script, unchanged.
+        result = self.boot(BOOT_GPUS="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = json.loads(self.handoff.read_text())
+        self.assertEqual(state["START_FIXED_ARGS"], base)
+        self.assertEqual(state["START_SCRIPT"], str(self.start))
+        # Three GPUs on a Network Volume: GPU 0's ComfyUI keeps its models, pins no RAM
+        # and sees only its own GPU. The image file itself is not edited.
+        result = self.boot(BOOT_GPUS="3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        state = json.loads(self.handoff.read_text())
+        self.assertEqual(state["START_FIXED_ARGS"],
+                         base + " --cache-classic --cuda-device 0 --disable-pinned-memory")
+        self.assertEqual(state["START_SCRIPT"], str(self.local / "image-start.sh"))
+        self.assertEqual(state["START_COMFYUI_DIR"], str(self.comfy))
+        self.assertIn(f'FIXED_ARGS="{base}"', self.start.read_text())
+        # The user's own cache flag wins over --cache-classic.
+        (self.workspace / "runpod-slim/comfyui_args.txt").write_text("# mine\n--cache-lru 4\n")
+        result = self.boot(BOOT_GPUS="3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.handoff.read_text())["START_FIXED_ARGS"],
+                         base + " --cuda-device 0 --disable-pinned-memory")
+        # Switched off: no coordinator, no flags.
+        result = self.boot(BOOT_GPUS="3", LONGCAT_PARALLEL="0")
+        self.assertEqual(json.loads(self.handoff.read_text())["START_FIXED_ARGS"], base)
+
+    def test_several_gpus_on_a_global_volume(self):
+        result = self.boot_global(BOOT_GPUS="2")
+        self.assert_global_boot(result, self.workspace)
+        self.assertIn("--cache-classic --cuda-device 0 --disable-pinned-memory",
+                      json.loads(self.handoff.read_text())["START_FIXED_ARGS"])
 
     def test_new_pin_moves_the_wrapper(self):
         self.assertEqual(self.boot().returncode, 0)

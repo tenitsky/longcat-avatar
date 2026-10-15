@@ -202,6 +202,38 @@ class CoordinatorTests(Base):
         self.assertEqual(sorted(c.tick()), [("talk", "podA-gpu0"), ("talk", "podA-gpu1")])
         self.assertEqual(sorted(p for p, _, _ in self.api.submitted), [8188, 8189])
 
+    def test_extra_gpus_get_their_own_comfyui_that_keeps_models_loaded(self):
+        api = FakeAPI()
+        api.status[8188] = (0, 0)       # GPU 0's ComfyUI is up
+        args = self.comfy / "comfyui_args.txt"
+        args.write_text("--reserve-vram 1\n--cuda-device 5\n")
+        c = coordinator.Coordinator(str(self.comfy), "podA", 3, python="/venv/python",
+                                    args_file=str(args), api=api, clock=lambda: NOW,
+                                    log_dir=str(self.comfy))
+        with patch.object(coordinator.subprocess, "Popen") as popen:
+            c.start_extras()
+        commands = [call.args[0] for call in popen.call_args_list]
+        self.assertEqual(len(commands), 2)
+        for gpu, command in zip((1, 2), commands):
+            self.assertEqual(command[:2], ["/venv/python", "main.py"])
+            self.assertEqual(command[command.index("--port") + 1], str(8188 + gpu))
+            self.assertEqual(command[command.index("--cuda-device") + 1], str(gpu))
+            self.assertEqual(command.count("--cuda-device"), 1)   # the user's is dropped
+            self.assertIn("--cache-classic", command)
+            self.assertIn("--disable-pinned-memory", command)
+            self.assertIn("--reserve-vram", command)
+        envs = [call.kwargs["env"]["LONGCAT_WORKER_ID"] for call in popen.call_args_list]
+        self.assertEqual(envs, ["podA-gpu1", "podA-gpu2"])
+        # A user's own cache flag wins.
+        self.assertEqual(coordinator.shared_pod_args(["--cache-lru", "4"]),
+                         ["--disable-pinned-memory"])
+        # Not before GPU 0's ComfyUI answers.
+        api.status.clear()
+        c = coordinator.Coordinator(str(self.comfy), "podB", 3, api=api, clock=lambda: NOW)
+        with patch.object(coordinator.subprocess, "Popen") as popen:
+            c.start_extras()
+        popen.assert_not_called()
+
     def test_extra_comfyui_args_drop_listen_and_port(self):
         args = self.comfy / "comfyui_args.txt"
         args.write_text("# comment\n--listen 0.0.0.0\n--reserve-vram 1\n--port=9000\n"

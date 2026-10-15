@@ -55,6 +55,7 @@ else
   python3 "$STORAGE_PY" preflight "$COMFYUI_PATH"
   STATE_DIR=/workspace
   STAGE_DIR=""
+  IMAGE_START=""
 fi
 echo "Storage: $STORAGE_MODE volume at $DATA_ROOT"
 
@@ -589,13 +590,40 @@ if [ "${LONGCAT_PARALLEL:-1}" != 0 ]; then
     --args-file /workspace/runpod-slim/comfyui_args.txt \
     > /tmp/longcat-coordinator.log 2>&1 &
   echo "Coordinator started for $LONGCAT_WORKER_ID (log: /tmp/longcat-coordinator.log)"
+  # Several GPUs: one ComfyUI each. By default ComfyUI drops cached models when free RAM
+  # runs low, and counts the other ComfyUIs' memory as pressure, so models were reloaded
+  # from the volume for every chunk. Classic caching keeps them loaded; no pinned memory
+  # stops each ComfyUI claiming most of the RAM. The coordinator gives the extra GPUs'
+  # ComfyUIs the same flags. A cache flag in comfyui_args.txt wins.
+  GPU_COUNT="$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)"
+  if [ "${GPU_COUNT:-0}" -gt 1 ]; then
+    shared_args="--cuda-device 0 --disable-pinned-memory"
+    if ! grep -v '^[[:space:]]*#' /workspace/runpod-slim/comfyui_args.txt 2>/dev/null \
+        | grep -qE -- '--cache-|--high-ram'; then
+      shared_args="--cache-classic $shared_args"
+    fi
+    if [ -z "$IMAGE_START" ]; then
+      mkdir -p "$LOCAL_ROOT"
+      IMAGE_START="$LOCAL_ROOT/image-start.sh"
+      cp /start.sh "$IMAGE_START"
+      chmod +x "$IMAGE_START"
+    fi
+    base_args='--listen 0.0.0.0 --port 8188 --enable-cors-header'
+    sed -i "s#^FIXED_ARGS=\"$base_args\"\$#FIXED_ARGS=\"$base_args $shared_args\"#" "$IMAGE_START"
+    if grep -q "^FIXED_ARGS=\"$base_args $shared_args\"\$" "$IMAGE_START"; then
+      echo "$GPU_COUNT GPUs: ComfyUI on GPU 0 runs with $shared_args"
+    else
+      echo "WARNING: could not add '$shared_args' to this image's start script; with"
+      echo "         several GPUs, models may be reloaded between chunks."
+    fi
+  fi
 else
   echo "LONGCAT_PARALLEL=0: renders stay on the GPU they are queued on."
 fi
 
 # 6. Start ComfyUI using the official RunPod entrypoint
 echo "Setup complete! Handing over to start script..."
-if [ "$STORAGE_MODE" = global ]; then
+if [ -n "$IMAGE_START" ]; then
   # The image creates comfyui_args.txt here before starting ComfyUI.
   mkdir -p /workspace/runpod-slim
   exec "$IMAGE_START"
