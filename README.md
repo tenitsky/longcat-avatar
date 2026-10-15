@@ -390,9 +390,45 @@ about 7-9 sections. The template uses that to render one video on several GPUs a
 
 The first chunk renders on the GPU you queued on, so a one-chunk test stays a test.
 From the second chunk on, the render is shared out, and the log says so:
-`'<name>': 8 sections shared across 4 workers (...)`. You don't need a large batch
-count: the coordinator keeps every GPU's queue fed. The GPU you queued on stitches the
-final video when every section is done. With one GPU and no other pod, nothing changes.
+`'<name>': 8 sections shared across 4 workers (...)`. The coordinator then keeps every
+GPU's queue fed. The GPU you queued on stitches the final video when every section is
+done. With one GPU and no other pod, nothing changes.
+
+**What you will see, in order** (3 GPUs, one pod):
+
+| Time | What happens | Where to see it |
+|---|---|---|
+| Boot | Setup finishes; the coordinator starts | pod log: `Coordinator started for <pod>-gpu0` |
+| +1-2 min | ComfyUI on GPU 0 is up; the coordinator starts one ComfyUI each for GPUs 1 and 2 | `/tmp/longcat-coordinator.log`: `started ComfyUI for GPU 1 on port 8189` |
+| +2-3 min | Each extra ComfyUI is up and registers | `output/longcat_longform/.workers/` lists `<pod>-gpu0`, `-gpu1`, `-gpu2` |
+| You queue | Chunk 1 renders on GPU 0 alone; GPU 0 loads the model first (several minutes from a Global Volume) | ComfyUI log: `chunk 1/36` |
+| Item 2 | The render is shared out | ComfyUI log: `3 sections shared across 3 workers` |
+| Then | GPUs 1 and 2 each load the model **once** (several minutes), then render their sections | `/tmp/comfyui-gpu1.log`, `/tmp/comfyui-gpu2.log` |
+| End | GPU 0 stitches when every section is on disk | ComfyUI log: `FINISHED: ...` |
+
+Things to know:
+
+- **Queue at least 2 items** (any batch count from 2; the usual "audio seconds / 3.2"
+  is fine). The second item is what shares the render. With batch count 1, only chunk 1
+  renders and nothing is shared.
+- **The extra GPUs start slowly, once.** Each loads the model before its first chunk
+  (on a Global Volume, the text encoder and LongCat model took about 4 minutes on an
+  RTX PRO 4500). Until then they show no progress. That cost is paid once per pod start,
+  not per chunk or per video.
+- **Short voiceovers gain little.** The video is done when its longest section is, and
+  sections follow the pauses in the speech: a 2-minute voiceover may split 59 s / 40 s /
+  13 s, so 3 GPUs finish it in about half the time of one, not a third. From about
+  5 minutes up, sections even out and the gain grows.
+- **To check it is working**, open a terminal on the pod (JupyterLab -> Terminal):
+
+  ```bash
+  cat /tmp/longcat-coordinator.log                              # GPUs found, ComfyUIs started, items queued
+  ls /workspace/runpod-slim/ComfyUI/output/longcat_longform/.workers/   # one file per live GPU
+  tail -5 /tmp/comfyui-gpu1.log                                 # the GPU 1 ComfyUI
+  ```
+
+  If `.workers/` lists only `gpu0`, the extra ComfyUIs did not start: the end of
+  `/tmp/comfyui-gpu1.log` says why.
 
 **How it works.** `coordinator.py` runs in the background on every pod (setup starts it;
 log: `/tmp/longcat-coordinator.log`). It:

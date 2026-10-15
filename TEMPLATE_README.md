@@ -33,7 +33,7 @@ The final video lands in ComfyUI/output. To resume, queue again.
 
 ## Faster on several GPUs or pods
 
-One video can render on several GPUs at once: the render is split at the restarts into sections of about a minute, and each GPU renders its own. Use a pod with several GPUs, or several pods on the **same volume** (let the first one finish setup). Queue as usual: from the second chunk on, the coordinator shares the render out and keeps every GPU busy; the GPU you queued on stitches the video. About 3–4× faster for a 7-minute voiceover on 7–9 GPUs. LONGCAT_PARALLEL=0 turns it off.
+One video can render on several GPUs at once: the render is split at the restarts into sections of about a minute, and each GPU renders its own. Use a pod with several GPUs, or several pods on the **same volume** (let the first one finish setup). Queue as usual, with a batch count of at least 2: chunk 1 renders on the first GPU alone, and the second item shares the render out ("3 sections shared across 3 workers" in the log). Each extra GPU then loads the model once, which takes a few minutes, before it starts rendering. The GPU you queued on stitches the video. Longer voiceovers gain most: about 3–4× faster for 7 minutes on 7–9 GPUs; a 2-minute one, about 2× on 3 GPUs. Check progress in /tmp/longcat-coordinator.log. LONGCAT_PARALLEL=0 turns it off.
 
 ## Hardware
 

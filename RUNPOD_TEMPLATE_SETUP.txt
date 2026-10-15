@@ -192,9 +192,14 @@ HF_TOKEN=
 #     Pick a pod with enough system RAM: every GPU loads its own copy of the model.
 #   - Several pods: attach the SAME volume to all of them (a Global Volume, or one
 #     Network Volume in one datacenter). Let the first pod finish setup first.
-# Queue as usual. From the second chunk on, the log shows
+# Queue as usual, batch count 2 or more (with 1, only chunk 1 renders, unshared).
+# Chunk 1 renders on GPU 0 alone; from the second item the log shows
 #   "'<name>': N sections shared across M workers (...)"
-# and the coordinator keeps every GPU busy; the GPU you queued on stitches.
+# Each extra GPU then loads the model ONCE (a few minutes; ~4 min on a Global
+# Volume) before it renders. The GPU you queued on stitches.
+# Check: /tmp/longcat-coordinator.log, and output/longcat_longform/.workers/
+# should list one file per GPU. Short voiceovers gain least (the longest section
+# sets the finish time): ~2x for 2 minutes on 3 GPUs.
 # 7-9 GPUs: a 7-minute voiceover about 3-4x faster. Coordinator log:
 #   /tmp/longcat-coordinator.log. Turn off with LONGCAT_PARALLEL=0.
 
