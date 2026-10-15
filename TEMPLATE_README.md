@@ -4,9 +4,10 @@ Turn a portrait and voiceover of any length into a talking-avatar video with Lon
 
 ## Storage
 
-Attach your own **Network Volume at /workspace** when deploying (**100 GB recommended**). The container disk is 5 GB and the Volume disk 0 GB.
+Attach your own volume at /workspace when deploying. Either kind works; setup detects which:
 
-Everything stays on the volume. Reattach it in its datacenter when replacing a pod.
+- **Network Volume** (**100 GB recommended**): everything stays on the volume. Reattach it in its datacenter when replacing a pod.
+- **Global Volume** (beta, any datacenter): models, inputs, outputs and saved workflows stay on the volume; ComfyUI itself runs from the container disk and is set up again on each fresh container (a few minutes). Keep the container disk at **50 GB**: first-boot downloads are staged there. Let the first pod finish downloading before starting others.
 
 ## Connect
 

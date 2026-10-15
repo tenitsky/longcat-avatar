@@ -37,6 +37,8 @@ Registry credentials:     none (public image)
 # What it does: checks DNS for github.com + huggingface.co (falls back to
 # 1.1.1.1 / 8.8.8.8 if needed), clones this repo (10 retries), runs setup.sh.
 # setup.sh installs everything, downloads the models and finally runs /start.sh.
+# It clones the main branch; the env var TEMPLATE_REF picks another branch or tag
+# (TEMPLATE_REF=v1-network-volume = the version before Global Volume support).
 
 {
   "entrypoint": [
@@ -44,7 +46,7 @@ Registry credentials:     none (public image)
     "-lc"
   ],
   "cmd": [
-    "set -e\ndns_ok() {\n  timeout 10 getent ahostsv4 github.com >/dev/null 2>&1 &&\n  timeout 10 getent ahostsv4 huggingface.co >/dev/null 2>&1\n}\nif ! dns_ok; then\n  echo 'DNS lookup failed; retrying in 3 seconds...'\n  sleep 3\n  if ! dns_ok; then\n    dns_backup=$(mktemp /tmp/longcat-avatar-dns.XXXXXX)\n    cp /etc/resolv.conf \"$dns_backup\"\n    echo \"Trying public DNS; original resolver saved at $dns_backup\"\n    if { printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:2\\n'; } > /etc/resolv.conf && dns_ok; then\n      echo 'DNS recovered; continuing setup.'\n    else\n      cat \"$dns_backup\" > /etc/resolv.conf || true\n      echo 'FATAL: DNS still unavailable or resolver is read-only. Check RunPod networking or deploy on another host with the same Network Volume.' >&2\n      exit 1\n    fi\n  fi\nfi\nfor attempt in 1 2 3 4 5 6 7 8 9 10; do\n  repo=$(mktemp -d /tmp/longcat-avatar.XXXXXX)\n  if git clone --depth 1 https://github.com/tenitsky/longcat-avatar.git \"$repo\"; then\n    exec bash \"$repo/setup.sh\"\n  fi\n  sleep 5\ndone\necho 'FATAL: unable to clone longcat-avatar after 10 attempts' >&2\nexit 1\n"
+    "set -e\ndns_ok() {\n  timeout 10 getent ahostsv4 github.com >/dev/null 2>&1 &&\n  timeout 10 getent ahostsv4 huggingface.co >/dev/null 2>&1\n}\nif ! dns_ok; then\n  echo 'DNS lookup failed; retrying in 3 seconds...'\n  sleep 3\n  if ! dns_ok; then\n    dns_backup=$(mktemp /tmp/longcat-avatar-dns.XXXXXX)\n    cp /etc/resolv.conf \"$dns_backup\"\n    echo \"Trying public DNS; original resolver saved at $dns_backup\"\n    if { printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:2\\n'; } > /etc/resolv.conf && dns_ok; then\n      echo 'DNS recovered; continuing setup.'\n    else\n      cat \"$dns_backup\" > /etc/resolv.conf || true\n      echo 'FATAL: DNS still unavailable or resolver is read-only. Check RunPod networking or deploy on another host with the same Network Volume.' >&2\n      exit 1\n    fi\n  fi\nfi\nfor attempt in 1 2 3 4 5 6 7 8 9 10; do\n  repo=$(mktemp -d /tmp/longcat-avatar.XXXXXX)\n  if git clone --depth 1 --branch \"${TEMPLATE_REF:-main}\" https://github.com/tenitsky/longcat-avatar.git \"$repo\"; then\n    exec bash \"$repo/setup.sh\"\n  fi\n  sleep 5\ndone\necho 'FATAL: unable to clone longcat-avatar after 10 attempts' >&2\nexit 1\n"
   ]
 }
 
@@ -53,15 +55,29 @@ Registry credentials:     none (public image)
 # 4. STORAGE
 # ------------------------------------------------------------------------------
 
-Container disk:           5 GB     # disposable system files only
+Container disk:           50 GB    # Global Volume: first-boot downloads are staged here
+                                   # (Network Volume alone would need only 5 GB)
 Volume disk:              0 GB     # do NOT use a pod-local volume disk
 Volume mount path:        /workspace
 
-# At deploy time, each user attaches their OWN Network Volume at /workspace.
-# Recommended size: 100 GB (models ~63 GB incl. the FP8 copy, plus ComfyUI, venv, renders).
-# setup.sh refuses to run if /workspace is the container disk or a Global Volume.
-# To replace a pod later: deploy in the same datacenter, attach the same volume.
+# At deploy time, each user attaches their OWN volume at /workspace, either kind:
+#
+#   Network Volume (regional)
+#     Recommended size: 100 GB (models ~63 GB incl. the FP8 copy, plus ComfyUI,
+#     venv, renders). Everything lives on it. To replace a pod: deploy in the same
+#     datacenter, attach the same volume.
+#
+#   Global Volume (beta, any datacenter, grows by itself)
+#     Models, inputs, outputs and saved workflows live on it. ComfyUI, its venv and
+#     custom nodes run from the container disk, set up again on each fresh
+#     container (a few minutes). Let the first pod finish downloading before
+#     starting more pods on the same volume.
+#
+# setup.sh detects which one is attached (log line "Storage: network volume ..." or
+# "Storage: global volume ...") and refuses to run on the container disk alone.
+# Override with LONGCAT_STORAGE=network or LONGCAT_STORAGE=global.
 # Storage types: https://docs.runpod.io/pods/storage/types
+# Global Volumes: https://docs.runpod.io/storage/globalvolume/overview
 
 
 # ------------------------------------------------------------------------------
@@ -98,6 +114,8 @@ HF_TOKEN=
 #   WANVIDEO_WRAPPER_REF=      test a newer wrapper commit (workflows built on the pin)
 #   FILEBROWSER_PASSWORD=      only if port 8080 is exposed
 #   HF_HOME=                   default /workspace/.cache/huggingface
+#   LONGCAT_STORAGE=           network or global: override the volume detection
+#   TEMPLATE_REF=              branch or tag to clone (default main)
 #
 # Never set COMFYUI_PATH: the image starts ComfyUI at /workspace/runpod-slim/ComfyUI
 # and setup.sh stops if it is anything else.
@@ -165,7 +183,7 @@ HF_TOKEN=
 # ------------------------------------------------------------------------------
 # 10. FIRST-BOOT LOG CHECKLIST
 # ------------------------------------------------------------------------------
-#   "Network Volume workspace ready at /workspace"
+#   "Network Volume workspace ready at /workspace"  or  "Global Volume ready at /workspace"
 #   "GPU: <name>"                    (FATAL here = host driver too old; redeploy elsewhere)
 #   "ComfyUI-WanVideoWrapper: 088128b"
 #   model downloads ... "done."

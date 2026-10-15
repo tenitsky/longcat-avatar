@@ -67,10 +67,13 @@ node; `restart_max_seconds = 0` turns restarts off.
 
 On first pod boot, `setup.sh`:
 
-1. Requires a separate POSIX volume at `/workspace`; refuses container-disk or
-   Global Volume working storage
+1. Works out which volume is attached: a **Network Volume** or a **Global Volume**
+   (see [Storage](#storage-network-volume-or-global-volume)); refuses to install on the
+   container disk alone
 2. Copies the baked ComfyUI from `/opt/comfyui-baked` to `/workspace/runpod-slim/ComfyUI`
-   (self-healing, skip-if-present)
+   (self-healing, skip-if-present). With a Global Volume it goes to the container disk
+   instead, and its `models`, `input`, `output` and `user/default` folders link to the
+   volume
 3. Checks that ComfyUI has `comfy_api/latest` and that the image's PyTorch has a CUDA
    build that can use the GPU; stops if not, before any download
 4. Installs the bundled `comfyui-longcat-longform` nodes and **ComfyUI-WanVideoWrapper
@@ -85,7 +88,9 @@ On first pod boot, `setup.sh`:
 8. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
 
 On later boots every step finds its work done and is skipped, including the package
-install (a marker records the wrapper's requirements hash).
+install (a marker records the wrapper's requirements hash). With a Global Volume, a
+fresh container disk repeats steps 2 and 4 (a few minutes: copy ComfyUI, fetch the
+wrapper, install its packages); the models are never downloaded again.
 
 ## Models pulled
 
@@ -105,7 +110,8 @@ and the shared components the wrapper loads.
 
 The download is about **46 GB**; with the FP8 model, the models take about **63 GB**.
 Use **100 GB of Network Volume storage** as a starting point for ComfyUI, its
-environment, models and renders.
+environment, models and renders. A Global Volume grows by itself; it holds the models
+(~63 GB) plus your inputs and renders.
 
 ### The FP8 model
 
@@ -122,10 +128,24 @@ read at load. It does not make sampling faster here: the weights are upcast to b
 each layer. The cost is a small loss of precision; compare a BF16 and an FP8 render of
 the same chunk to judge it.
 
-## Persistent Network Volume storage
+## Storage: Network Volume or Global Volume
+
+Attach **one** of these at `/workspace` when deploying. Setup detects which it is and
+says so in the log (`Storage: network volume ...` or `Storage: global volume ...`).
+
+| | Network Volume | Global Volume (RunPod beta) |
+|---|---|---|
+| Where pods can run | its datacenter only | any datacenter (GPU pods) |
+| ComfyUI, venv, custom nodes | on the volume | on the container disk, set up again on each fresh container (a few minutes) |
+| Models, inputs, outputs, saved workflows | on the volume | on the volume |
+| Size | fixed, 100 GB recommended | grows by itself |
+| Container disk | 5 GB is enough | **50 GB** (first-boot downloads are staged there) |
+| Price | $0.07/GB/month | $0.09/GB/month plus a small per-request charge |
+
+### Network Volume
 
 Attach **one regional Network Volume at `/workspace`**. Setup installs everything
-there; the 5 GB container disk holds disposable system files.
+there; the container disk holds disposable system files.
 
 | Data | Persistent location |
 |---|---|
@@ -148,6 +168,62 @@ file execution. A pod-local Volume disk is lost when its pod is deleted; select 
 this template. Open your workflow and queue again: completed chunks are skipped. The
 chunk that was rendering may be rendered again after an interruption.
 
+### Global Volume
+
+A [Global Volume](https://docs.runpod.io/storage/globalvolume/overview) is not tied to
+a datacenter: one copy of the models serves pods anywhere. It is object storage rather
+than a full POSIX file system, with **no file locking, atomic rename, hard links or
+permission bits**. A Python virtualenv, a git checkout and pip all depend on those, so
+the earlier version of this template refused Global Volumes. Now setup splits the work:
+
+| Data | Location |
+|---|---|
+| ComfyUI, custom nodes, Python environment | container disk: `/opt/longcat-local/ComfyUI/` |
+| Models | volume: `runpod-slim/ComfyUI/models/` |
+| Uploaded portraits and audio, `batch_audio/` | volume: `runpod-slim/ComfyUI/input/` |
+| Saved sidebar workflows and ComfyUI settings | volume: `runpod-slim/ComfyUI/user/default/` |
+| Chunks and final videos | volume: `runpod-slim/ComfyUI/output/` |
+| Jupyter settings, IPython history, download caches, FileBrowser database | container disk: `/opt/longcat-local/` |
+
+The volume paths are the same as on a Network Volume, so a Network Volume copied over
+with RunPod's suggested `rsync -a /workspace/ /workspace-global/` is picked up as it
+is: its models are reused and its old ComfyUI install is ignored. ComfyUI's
+`models`, `input`, `output` and `user/default` folders are links into the volume.
+In Jupyter, upload into `/workspace/runpod-slim/ComfyUI/input/` as usual (when the
+volume is mounted at `/workspace-global`, it is linked as `/workspace/global-volume/`).
+
+How setup handles the volume's limits:
+
+- **Downloads** go to `/opt/longcat-local/downloads/` on the container disk, are checked
+  there, then copied to their final name on the volume. Nothing is renamed or locked on
+  the volume. The 31.7 GB BF16 model needs that much free container disk once, hence
+  **50 GB**. With less, setup warns; a download that runs out of space fails with
+  `No space left on device` and can be retried after raising the container disk.
+- **The FP8 model** is built on the container disk and copied over the same way.
+- **The image's `/start.sh`** fixes ComfyUI at `/workspace/runpod-slim/ComfyUI`. Setup
+  runs a copy of it (`/opt/longcat-local/image-start.sh`) pointed at the container-disk
+  install, and keeps FileBrowser's database there; the image file itself is not edited.
+
+Things to know:
+
+- **A fresh container disk takes a few minutes longer to boot.** A new pod, or a pod
+  started again after a stop, gets a new container disk: ComfyUI is copied from the
+  image, the wrapper fetched and its packages installed again. Models are not.
+- **Custom nodes you add with ComfyUI-Manager do not persist.** They live on the
+  container disk; add them to `setup.sh` if you need them every time.
+- **Run one pod at a time on a fresh volume.** Let the first pod finish downloading
+  (`Setup complete!`) before starting more: two pods writing the same file on a
+  Global Volume overwrite each other. After that, several pods can read the models
+  at once. Give each pod its own voiceovers so they don't write the same chunks.
+- Model loading reads from the volume, which RunPod optimises for reads; the first load
+  of a 32 GB model may take longer than from a Network Volume.
+- Mounted at `/workspace-global` instead (for example next to a Network Volume, or with
+  its mount path edited), setup finds it there. A Network Volume at `/workspace` takes
+  priority; `LONGCAT_STORAGE=global` uses the Global Volume instead.
+
+Global Volumes are in beta at RunPod; their behaviour may change. If setup misjudges
+which volume you have, set `LONGCAT_STORAGE=network` or `LONGCAT_STORAGE=global`.
+
 ## RunPod public template settings
 
 | Setting | Value |
@@ -156,10 +232,10 @@ chunk that was rendering may be rendered again after an interruption.
 | Compute type | **NVIDIA / GPU** |
 | Base image | **`runpod/comfyui:1.4.0-comfyuiv0.35.0-cuda12.8`** |
 | Registry authentication | None; image is public |
-| Container disk | **5 GB** |
+| Container disk | **50 GB** (a Global Volume stages downloads there; a Network Volume needs only 5 GB) |
 | Persistent storage in the public template editor | **Volume disk**, **0 GB** |
 | Template volume mount path | **`/workspace`** |
-| Network Volume at deployment | Each deployer attaches their own at `/workspace`; **100 GB recommended** |
+| Volume at deployment | Each deployer attaches their own **Network Volume** (100 GB recommended) or **Global Volume** at `/workspace` |
 | HTTP ports | **`8188,8888`** (ComfyUI, JupyterLab) |
 | TCP ports | None required; expose `22` only if SSH is wanted |
 | Environment variables | `JUPYTER_NO_AUTH=1`; `HF_TOKEN` optional |
@@ -181,7 +257,9 @@ field (also provided as [`runpod-start.json`](runpod-start.json); readable sourc
 leaves working DNS unchanged. If two checks fail, it saves the original
 `/etc/resolv.conf` under `/tmp/longcat-avatar-dns.*`, then tries the public resolvers
 `1.1.1.1` and `8.8.8.8`; if resolution still fails, it restores the original and stops
-with a networking error. Git clone failures are retried up to 10 times.
+with a networking error. Git clone failures are retried up to 10 times. It clones
+`main` unless `TEMPLATE_REF` names another branch or tag: `TEMPLATE_REF=v1-network-volume`
+runs the version from before Global Volume support.
 
 ```json
 {
@@ -190,13 +268,14 @@ with a networking error. Git clone failures are retried up to 10 times.
     "-lc"
   ],
   "cmd": [
-    "set -e\ndns_ok() {\n  timeout 10 getent ahostsv4 github.com >/dev/null 2>&1 &&\n  timeout 10 getent ahostsv4 huggingface.co >/dev/null 2>&1\n}\nif ! dns_ok; then\n  echo 'DNS lookup failed; retrying in 3 seconds...'\n  sleep 3\n  if ! dns_ok; then\n    dns_backup=$(mktemp /tmp/longcat-avatar-dns.XXXXXX)\n    cp /etc/resolv.conf \"$dns_backup\"\n    echo \"Trying public DNS; original resolver saved at $dns_backup\"\n    if { printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:2\\n'; } > /etc/resolv.conf && dns_ok; then\n      echo 'DNS recovered; continuing setup.'\n    else\n      cat \"$dns_backup\" > /etc/resolv.conf || true\n      echo 'FATAL: DNS still unavailable or resolver is read-only. Check RunPod networking or deploy on another host with the same Network Volume.' >&2\n      exit 1\n    fi\n  fi\nfi\nfor attempt in 1 2 3 4 5 6 7 8 9 10; do\n  repo=$(mktemp -d /tmp/longcat-avatar.XXXXXX)\n  if git clone --depth 1 https://github.com/tenitsky/longcat-avatar.git \"$repo\"; then\n    exec bash \"$repo/setup.sh\"\n  fi\n  sleep 5\ndone\necho 'FATAL: unable to clone longcat-avatar after 10 attempts' >&2\nexit 1\n"
+    "set -e\ndns_ok() {\n  timeout 10 getent ahostsv4 github.com >/dev/null 2>&1 &&\n  timeout 10 getent ahostsv4 huggingface.co >/dev/null 2>&1\n}\nif ! dns_ok; then\n  echo 'DNS lookup failed; retrying in 3 seconds...'\n  sleep 3\n  if ! dns_ok; then\n    dns_backup=$(mktemp /tmp/longcat-avatar-dns.XXXXXX)\n    cp /etc/resolv.conf \"$dns_backup\"\n    echo \"Trying public DNS; original resolver saved at $dns_backup\"\n    if { printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:2\\n'; } > /etc/resolv.conf && dns_ok; then\n      echo 'DNS recovered; continuing setup.'\n    else\n      cat \"$dns_backup\" > /etc/resolv.conf || true\n      echo 'FATAL: DNS still unavailable or resolver is read-only. Check RunPod networking or deploy on another host with the same Network Volume.' >&2\n      exit 1\n    fi\n  fi\nfi\nfor attempt in 1 2 3 4 5 6 7 8 9 10; do\n  repo=$(mktemp -d /tmp/longcat-avatar.XXXXXX)\n  if git clone --depth 1 --branch \"${TEMPLATE_REF:-main}\" https://github.com/tenitsky/longcat-avatar.git \"$repo\"; then\n    exec bash \"$repo/setup.sh\"\n  fi\n  sleep 5\ndone\necho 'FATAL: unable to clone longcat-avatar after 10 attempts' >&2\nexit 1\n"
   ]
 }
 ```
 
 For the first launch, check the logs for **`Network Volume workspace ready at
-/workspace`**, then `ComfyUI-WanVideoWrapper: 088128b`, the model downloads and
+/workspace`** (or **`Global Volume ready at /workspace`**), then
+`ComfyUI-WanVideoWrapper: 088128b`, the model downloads and
 **`Setup complete!`**. If ComfyUI works but Jupyter stays on initializing, inspect
 `/jupyter.log` from the pod's terminal.
 
@@ -316,9 +395,12 @@ Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 doe
 | `WANVIDEO_WRAPPER_REF` | pinned commit | Test a newer ComfyUI-WanVideoWrapper commit. The workflows were built against the pin |
 | `FILEBROWSER_PASSWORD` | `adminadmin12` | FileBrowser on port 8080 (user `admin`). **Change the default** |
 | `COMFYUI_PATH` | `/workspace/runpod-slim/ComfyUI` | Leave unset; must match the base image's fixed startup path |
-| `HF_HOME` | `/workspace/.cache/huggingface` | Keeps the HF cache on the volume, not the 5 GB container disk |
+| `HF_HOME` | `/workspace/.cache/huggingface` | Keeps the HF cache on the volume, not the container disk (Global Volume: `/opt/longcat-local/.cache/huggingface`) |
+| `LONGCAT_STORAGE` | `auto` | `network` or `global` overrides which volume setup thinks it has |
+| `TEMPLATE_REF` | `main` | Branch or tag of this repo the start command clones; `v1-network-volume` is the version before Global Volume support |
 
-ComfyUI runs from its own virtualenv (`$COMFYUI_PATH/.venv-cu128`). If you install
+ComfyUI runs from its own virtualenv (`$COMFYUI_PATH/.venv-cu128`; with a Global Volume
+`/opt/longcat-local/ComfyUI/.venv-cu128`). If you install
 anything by hand, use that interpreter with the image's pins, and never install `torch`
 into it:
 
@@ -335,7 +417,12 @@ the Whisper frame count; continuation tails, trimming and stitching with real ff
 (frame-exact across every join and restart); the restart planner on synthetic speech
 (real pauses chosen over short gaps, cuts mid-pause) and on the sample voiceover;
 resume, batch folders, and a full first boot and reboot
-of `setup.sh` against an offline image fixture.
+of `setup.sh` against an offline image fixture, on a Network Volume and on a simulated
+Global Volume that refuses rename, hard links, symlinks and permission changes.
+
+**Not yet verified on a real Global Volume:** how RunPod reports its mount type (setup
+recognises it by its missing hard links), download and model-load speed from it, and
+ffmpeg writing chunks to it.
 
 **Not yet verified:** a render on a real GPU, so lip-sync quality, VRAM use and speed are
 unknown, and the FP8 model's quality against BF16 is unmeasured. The FP8 conversion itself is tested on CPU: tensor
@@ -356,7 +443,7 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 │   ├── test_fp8.py                        # FP8 tensor selection, values and file format
 │   ├── test_workflows.py                  # graphs vs. node schemas, settings, layout, downloads
 │   ├── test_longform.py                   # planning, audio, continuation and ffmpeg stitching
-│   ├── test_storage.py                    # Network Volume mount and filesystem checks
+│   ├── test_storage.py                    # volume detection, Network and Global Volume checks
 │   ├── test_boot.py                       # full setup with image/network fixtures (Linux)
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
