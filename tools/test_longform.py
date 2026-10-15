@@ -14,6 +14,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -333,12 +334,13 @@ class RenderTests(unittest.TestCase):
 
     def item(self, audio, session, filename, anchor=lc.ANCHOR_IDENTITY,
              restart=(lc.RESTART_MIN, lc.RESTART_MAX),
-             batch_session=None):
+             batch_session=None, extra=None):
         """One queue item. The 'sampler' paints each window frame with its global index
         so continuity and trimming can be checked in the written files."""
         prompt = {"70": {"class_type": "LongCatLongformWrite", "inputs": {"session": session}}}
         out = lc.LongCatLongformSplit().split(audio, anchor, *restart,
-                                              session=batch_session, prompt=prompt)
+                                              session=batch_session, prompt=prompt,
+                                              extra_pnginfo=extra)
         if isinstance(out[0], ExecutionBlocker):
             return None
         (chunk, _, _, nframes, _, _, _, _, trim, keep, total, opens, index) = out
@@ -453,6 +455,96 @@ class RenderTests(unittest.TestCase):
         got = np.frombuffer(raw, np.uint8).reshape(seconds * 25, -1)[:, 0].astype(int)
         diff = np.abs(got - np.arange(seconds * 25) % 256)
         self.assertLessEqual(int(np.minimum(diff, 256 - diff).max()), 3)
+
+    def test_shared_render_across_three_workers(self):
+        # 75 s with restarts every 20-40 s: three or more independent sections. The user
+        # queues on worker A; B and C get coordinator items pinned to the session.
+        sr, seconds, restart = 16000, 75, (20.0, 40.0)
+        audio = speech(sr, seconds)
+        root = Path(self.tmp.name) / lc.SESSION_ROOT
+        a, b, c = "podA-gpu0", "podB-gpu0", "podC-gpu0"
+        for worker in (a, b, c):
+            lc.parallel.write_heartbeat(str(root), worker)
+        rendered = []
+
+        def run(worker):
+            pin = None if worker == a else {lc.parallel.PIN_KEY: {"session": "shared"}}
+            with patch.dict(os.environ, {"LONGCAT_WORKER_ID": worker,
+                                         "LONGCAT_PARALLEL": "1"}):
+                r = self.item(audio, "shared", "shared.mp4", lc.ANCHOR_WINDOW_END,
+                              restart=restart, extra=pin)
+            if r is not None:
+                rendered.append((worker, r[0]))
+            return r
+
+        sdir = root / "shared"
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Helpers have nothing before the render is shared.
+            self.assertIsNone(run(b))
+            # Chunk 0 renders on A alone, so a one-chunk test never spreads out...
+            self.assertEqual(run(a)[0], 0)
+            self.assertFalse((sdir / lc.parallel.JOB_FILE).exists())
+            # ...and A's next item shares the render.
+            run(a)
+            job = lc.parallel.load_job(sdir)
+            self.assertEqual(job["leader"], a)
+            self.assertEqual(set(job["assignment"]), {a, b, c})
+            for _ in range(100):
+                if all([run(w) is None for w in (b, c, a)]):
+                    break
+        mono16, _ = lc.prepared_track(audio)
+        spans = lc.plan_chunks(seconds * 25, lc.plan_restarts(mono16, seconds * 25, *restart))
+        # Every chunk exactly once, each by the worker that owns its section.
+        self.assertEqual(sorted(i for _, i in rendered), list(range(len(spans))))
+        for worker, index in rendered:
+            self.assertIn(index, lc.parallel.owned_chunks(job, worker))
+        self.assertGreater(len({w for w, _ in rendered}), 2)
+        # The leader stitched; the shared plan is gone, so the session can be redone alone.
+        self.assertFalse((sdir / lc.parallel.JOB_FILE).exists())
+        self.assertTrue((sdir / lc.FINISHED).exists())
+        final = Path(self.tmp.name) / "shared.mp4"
+        self.assertEqual(self.frames(final), seconds * 25)
+        raw = subprocess.check_output(["ffmpeg", "-v", "error", "-i", str(final), "-f",
+                                       "rawvideo", "-pix_fmt", "rgb24", "-"])
+        got = np.frombuffer(raw, np.uint8).reshape(seconds * 25, -1)[:, 0].astype(int)
+        diff = np.abs(got - np.arange(seconds * 25) % 256)
+        self.assertLessEqual(int(np.minimum(diff, 256 - diff).max()), 3)
+
+    def test_without_other_workers_nothing_is_shared(self):
+        sr, seconds, restart = 16000, 75, (20.0, 40.0)
+        audio = speech(sr, seconds)
+        root = Path(self.tmp.name) / lc.SESSION_ROOT
+        lc.parallel.write_heartbeat(str(root), "podA-gpu0")
+        lc.parallel.write_heartbeat(str(root), "old-gpu0", now=0)
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(os.environ, {"LONGCAT_WORKER_ID": "podA-gpu0"}):
+            for _ in range(3):
+                self.item(audio, "alone", "alone.mp4", restart=restart)
+            with patch.dict(os.environ, {"LONGCAT_WORKER_ID": "podA-gpu0",
+                                         "LONGCAT_PARALLEL": "0"}):
+                lc.parallel.write_heartbeat(str(root), "podB-gpu0")
+                self.item(audio, "alone", "alone.mp4", restart=restart)
+        self.assertFalse((root / "alone" / lc.parallel.JOB_FILE).exists())
+
+    def test_batch_leader_moves_on_while_helpers_finish(self):
+        sdir = Path(lc._session_dir("talk 1"))
+        spans = [[0, 93, True], [93, 80, False], [173, 93, True]]
+        job = lc.parallel.make_job("talk 1", "podA-gpu0", "266:173", spans,
+                                   lc.parallel.sections(spans),
+                                   {"podA-gpu0": [0], "podB-gpu0": [1]})
+        lc.parallel.save_job(sdir, job)
+        for i in (0, 1):
+            Path(lc.parallel.chunk_path(sdir, i)).write_bytes(b"mp4")
+        Path(lc.parallel.tail_path(sdir, 0)).parent.mkdir(exist_ok=True)
+        Path(lc.parallel.tail_path(sdir, 0)).write_bytes(b"npz")
+        # A's sections are done and B's is not: A's batch moves on to the next file.
+        self.assertTrue(lc.waiting_on_others("talk 1", "podA-gpu0"))
+        self.assertFalse(lc.waiting_on_others("talk 1", "podB-gpu0"))
+        # Every chunk done: the leader comes back to stitch; the helper stays away.
+        Path(lc.parallel.chunk_path(sdir, 2)).write_bytes(b"mp4")
+        self.assertFalse(lc.waiting_on_others("talk 1", "podA-gpu0"))
+        self.assertTrue(lc.waiting_on_others("talk 1", "podB-gpu0"))
+        self.assertFalse(lc.waiting_on_others("no job", "podA-gpu0"))
 
     def test_batch_folder_renders_each_file_once_in_name_order(self):
         folder = Path(self.tmp.name) / "input" / "batch_audio"

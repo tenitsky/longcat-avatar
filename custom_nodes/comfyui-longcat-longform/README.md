@@ -70,8 +70,30 @@ are. `restart_max_seconds = 0` turns restarts off.
 A chunk counts as done when its mp4 exists and, if the next chunk continues from it,
 its tail exists.
 Each queue item renders the first chunk that isn't done; the last is redone until a
-stitch writes `.finished`. Chunks depend on their predecessors, so they always render
-in order; there is no multi-pod split as in H3.
+stitch writes `.finished`. Chunks depend on their predecessors, so within a section
+(from one restart to the next) they always render in order.
+
+## Shared renders (several GPUs or pods)
+
+Sections do not depend on each other, so `parallel.py` and `coordinator.py` share a
+render out by section. The coordinator runs in the background on every pod (setup.sh
+starts it): it starts one more ComfyUI per extra GPU, writes a heartbeat for each to
+`output/longcat_longform/.workers/`, and keeps every worker's queue fed with the
+sections it was given.
+
+- From the second chunk on, Split shares the render if another worker is alive: it
+  writes `<session>/job.json` (sections and who renders each) and becomes the leader.
+  A one-chunk test never spreads out.
+- Coordinator queue items carry `longcat_job` in `extra_pnginfo`, pinning them to the
+  session; Split then renders only that worker's sections.
+- Write never stitches a shared render. The leader's Split stitches once every chunk is
+  on disk, then deletes `job.json`.
+- The batch folder node moves on to the next file while other workers finish this one.
+- A worker silent for 5 minutes loses its unfinished sections to live ones; queuing
+  again on another pod takes over from a silent leader.
+
+Every shared file has a single writer and none is renamed or locked, so this works on a
+Global Volume. `LONGCAT_PARALLEL=0` keeps every render on the GPU it was queued on.
 
 Delete a chunk **and every later one** to redo from it. Use a fresh session (change
 `name_suffix`) when changing the canvas, audio, portrait or anchor; the Opening node

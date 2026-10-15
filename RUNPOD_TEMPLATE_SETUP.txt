@@ -115,6 +115,7 @@ HF_TOKEN=
 #   FILEBROWSER_PASSWORD=      only if port 8080 is exposed
 #   HF_HOME=                   default /workspace/.cache/huggingface
 #   LONGCAT_STORAGE=           network or global: override the volume detection
+#   LONGCAT_PARALLEL=0         turn off the coordinator (renders stay on one GPU)
 #   TEMPLATE_REF=              branch or tag to clone (default main)
 #
 # Never set COMFYUI_PATH: the image starts ComfyUI at /workspace/runpod-slim/ComfyUI
@@ -136,7 +137,8 @@ HF_TOKEN=
 #   ComfyUI-WanVideoWrapper (kijai), pinned to 088128b224242e110d3906c6750e9a3a348a659b
 #     https://github.com/kijai/ComfyUI-WanVideoWrapper
 #     https://github.com/kijai/ComfyUI-WanVideoWrapper/tree/088128b224242e110d3906c6750e9a3a348a659b
-#   comfyui-longcat-longform (bundled in this repo, custom_nodes/)
+#   comfyui-longcat-longform (bundled in this repo, custom_nodes/), including the
+#     coordinator, started in the background (see 9b)
 
 # Models, all from https://huggingface.co/Kijai/WanVideo_comfy
 #   models/diffusion_models/LongCat-Avatar-15_bf16.safetensors                  ~31.7 GB
@@ -181,6 +183,23 @@ HF_TOKEN=
 
 
 # ------------------------------------------------------------------------------
+# 9b. SEVERAL GPUs OR PODS (the coordinator)
+# ------------------------------------------------------------------------------
+# One video renders on several GPUs at once: it is split at the restarts into
+# sections of about a minute, and each GPU renders its own.
+#   - Pod with several GPUs: nothing to set. Each extra GPU gets its own ComfyUI
+#     (ports 8189, 8190, ... inside the pod; logs /tmp/comfyui-gpu<N>.log).
+#     Pick a pod with enough system RAM: every GPU loads its own copy of the model.
+#   - Several pods: attach the SAME volume to all of them (a Global Volume, or one
+#     Network Volume in one datacenter). Let the first pod finish setup first.
+# Queue as usual. From the second chunk on, the log shows
+#   "'<name>': N sections shared across M workers (...)"
+# and the coordinator keeps every GPU busy; the GPU you queued on stitches.
+# 7-9 GPUs: a 7-minute voiceover about 3-4x faster. Coordinator log:
+#   /tmp/longcat-coordinator.log. Turn off with LONGCAT_PARALLEL=0.
+
+
+# ------------------------------------------------------------------------------
 # 10. FIRST-BOOT LOG CHECKLIST
 # ------------------------------------------------------------------------------
 #   "Network Volume workspace ready at /workspace"  or  "Global Volume ready at /workspace"
@@ -188,6 +207,7 @@ HF_TOKEN=
 #   "ComfyUI-WanVideoWrapper: 088128b"
 #   model downloads ... "done."
 #   "FP8 model ready: LongCat-Avatar-15_fp8_e4m3fn.safetensors"
+#   "Coordinator started for <pod>-gpu0 (log: /tmp/longcat-coordinator.log)"
 #   "Setup complete! Handing over to start script..."
 # A failed download stops setup; restart the pod and finished files are skipped.
 # Jupyter stuck on "initializing": check /jupyter.log from the pod terminal.

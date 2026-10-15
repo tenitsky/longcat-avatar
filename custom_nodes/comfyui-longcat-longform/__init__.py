@@ -52,6 +52,16 @@ import torch
 import folder_paths
 
 try:
+    from . import parallel
+except ImportError:  # loaded as a plain module, as the tests do
+    import importlib.util as _importlib_util
+    _spec = _importlib_util.spec_from_file_location(
+        "longcat_longform_parallel",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "parallel.py"))
+    parallel = _importlib_util.module_from_spec(_spec)
+    _spec.loader.exec_module(parallel)
+
+try:
     # Returning this from a node blocks everything downstream, so a surplus queue
     # item finishes in milliseconds instead of sampling.
     from comfy_execution.graph_utils import ExecutionBlocker
@@ -332,12 +342,50 @@ def _session_from_prompt(prompt, default="run1"):
     return default
 
 
-FINISHED = ".finished"          # written by Write once the stitch succeeds
+FINISHED = parallel.FINISHED    # written once the stitch succeeds
+
+
+def _write_setting(prompt, key):
+    """A widget value of the Write node, or None when it is linked or missing."""
+    for node in _prompt_nodes(prompt, "LongCatLongformWrite"):
+        value = (node.get("inputs") or {}).get(key)
+        if not isinstance(value, list):
+            return value
+    return None
+
+
+def _filename_from_prompt(prompt, session):
+    """The final video's name, as the Write node will get it."""
+    for node in _prompt_nodes(prompt, "LongCatLongformWrite"):
+        value = (node.get("inputs") or {}).get("filename")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, list) and len(value) == 2:
+            src = prompt.get(str(value[0])) or {}
+            if src.get("class_type") == "LongCatLongformAudioName":
+                suffix = (src.get("inputs") or {}).get("suffix", ".mp4")
+                return session + (suffix if isinstance(suffix, str) else ".mp4")
+    return session + ".mp4"
+
+
+def _pin(extra_pnginfo):
+    """The session a coordinator queue item is pinned to, or None for a user's item."""
+    if isinstance(extra_pnginfo, dict) and isinstance(extra_pnginfo.get(parallel.PIN_KEY), dict):
+        return extra_pnginfo[parallel.PIN_KEY].get("session") or ""
+    return None
+
+
+def _load_job(sdir):
+    try:
+        return parallel.load_job(sdir)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"{parallel.job_path(sdir)} cannot be read ({exc}). Delete it "
+                           f"to render this video on one GPU.") from exc
 
 
 def _tail_path(session, chunk_index):
     """Last written frames of a chunk, kept for the next window's lead-in."""
-    return os.path.join(_session_dir(session), ".carry", f"tail_{chunk_index:04d}.npz")
+    return parallel.tail_path(_session_dir(session), chunk_index)
 
 
 def _read_tail(session, chunk_index):
@@ -352,24 +400,99 @@ def _read_tail(session, chunk_index):
     return None
 
 
-def next_chunk(session, spans):
+def next_chunk(session, spans, allowed=None):
     """First chunk of a session that still needs rendering, or None when finished.
 
     A chunk is done when its mp4 exists and, if the next chunk continues from it, so
     does the tail that chunk opens on (a chunk before a restart needs none). The last
     chunk is redone until a stitch has succeeded, so an interrupted stitch is retried
-    rather than skipped.
+    rather than skipped. With `allowed` (a shared render: this worker's chunks), only
+    those are considered and None means they are all done.
     """
     sdir = _session_dir(session)
     count = len(spans)
-    for i in range(count):
-        if not os.path.exists(os.path.join(sdir, f"chunk_{i:04d}.mp4")):
+    for i in (range(count) if allowed is None else sorted(allowed)):
+        if not os.path.exists(parallel.chunk_path(sdir, i)):
             return i
         if i < count - 1 and not spans[i + 1][2] and _read_tail(session, i) is None:
             return i
-    if os.path.exists(os.path.join(sdir, FINISHED)):
+    if allowed is not None or os.path.exists(os.path.join(sdir, FINISHED)):
         return None
     return count - 1
+
+
+def share_render(session, spans, key, index, prompt=None, workflow=None):
+    """Share a render out to the other live workers, or None to keep it on this one.
+
+    Only from the second chunk on, so a one-chunk test stays on this GPU, and only
+    while this worker's own coordinator is running (it feeds the queue that stitches).
+    """
+    if not parallel.enabled() or index is None or index == 0:
+        return None
+    sdir = _session_dir(session)
+    me = parallel.worker_id()
+    live = parallel.live_workers(os.path.dirname(sdir))
+    if me not in live or len(live) < 2:
+        return None
+    secs = parallel.sections(spans)
+    work = parallel.section_work(sdir, spans, secs)
+    if sum(1 for w in work if w) < 2:
+        return None
+    current = next(s for s, (a, b) in enumerate(secs) if a <= index < b)
+    assignment = parallel.assign(work, live, me, fixed={current: me})
+    if len(assignment) < 2:
+        return None
+    job = parallel.make_job(session, me, key, spans, secs, assignment, prompt, workflow,
+                            _filename_from_prompt(prompt, session),
+                            _write_setting(prompt, "stop_when_done") is not False)
+    parallel.save_job(sdir, job)
+    owners = ", ".join(f"{w}: section(s) {', '.join(str(s + 1) for s in ss)}"
+                       for w, ss in assignment.items())
+    print(f"{LOG} '{session}': {len(secs)} sections shared across {len(assignment)} "
+          f"workers ({owners}). This worker ({me}) leads and stitches.")
+    return job
+
+
+def next_shared_chunk(session, spans, job, audio, prompt=None, pinned=False):
+    """This worker's next chunk of a shared render, or None when it has nothing to do.
+
+    When every chunk is on disk, the leader stitches here: the queue item that
+    rendered the last chunk may belong to another worker.
+    """
+    sdir = _session_dir(session)
+    me = parallel.worker_id()
+    if not pinned and job["leader"] != me:
+        live = parallel.live_workers(os.path.dirname(sdir))
+        if job["leader"] not in live:
+            # Queued again after the leading pod went away: take over.
+            parallel.reassign(sdir, job, live, leader=me)
+            parallel.save_job(sdir, job)
+            print(f"{LOG} '{session}': the previous leader is gone; {me} takes over.")
+    index = next_chunk(session, spans, parallel.owned_chunks(job, me))
+    if index is not None:
+        return index
+    left = next_chunk(session, spans, range(len(spans)))
+    if left is not None:
+        owners = sorted(w for w, ss in job["assignment"].items()
+                        if any(a <= left < b for a, b in (job["sections"][s] for s in ss)))
+        print(f"{LOG} '{session}': this worker's sections are done; waiting for "
+              f"{', '.join(owners) or 'a worker'} (chunk {left + 1} is next).")
+        return None
+    if os.path.exists(os.path.join(sdir, FINISHED)):
+        return None
+    if job["leader"] != me:
+        print(f"{LOG} '{session}': every chunk is done; {job['leader']} stitches.")
+        return None
+    out = stitch(session, len(spans), audio,
+                 job.get("filename") or _filename_from_prompt(prompt, session))
+    try:
+        os.remove(parallel.job_path(sdir))
+    except OSError:
+        pass
+    print(f"{LOG} FINISHED: {out} (rendered on {len(job['assignment'])} workers)")
+    if job.get("stop_when_done", True):
+        _clear_queue()
+    return None
 
 
 def _ffmpeg():
@@ -405,6 +528,48 @@ def _clear_queue():
     except Exception as e:
         print(f"{LOG} could not clear the queue ({e}); surplus items will be "
               f"skipped instead.")
+
+
+def stitch(session, total_chunks, original_audio, filename):
+    """Join every chunk in order under the untouched original track; returns the path.
+
+    A gap would shift everything after it out of sync, so a missing chunk stops it.
+    """
+    ff = _ffmpeg()
+    sdir = _session_dir(session)
+    paths = [os.path.join(sdir, f"chunk_{i:04d}.mp4") for i in range(total_chunks)]
+    missing = [i for i, p in enumerate(paths) if not os.path.exists(p)]
+    if missing:
+        raise RuntimeError(
+            f"Cannot stitch: chunks {missing} are not on disk. Queue again to "
+            f"render them in session '{session}'.")
+
+    listfile = os.path.join(sdir, "concat.txt")
+    with open(listfile, "w", encoding="utf-8") as f:
+        for p in paths:
+            # Relative, generated names avoid quoting user-supplied session
+            # paths (apostrophes and Windows separators break concat syntax).
+            f.write(f"file '{os.path.basename(p)}'\n")
+
+    silent = os.path.join(sdir, "video_only.mp4")
+    wav_path = os.path.join(sdir, ".original.wav")
+    out = os.path.join(folder_paths.get_output_directory(), filename)
+    try:
+        subprocess.run([ff, "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                        "-i", listfile, "-c:v", "copy", "-an", silent], check=True)
+        _write_wav(original_audio, wav_path, ff)
+        subprocess.run([ff, "-y", "-v", "error", "-i", silent, "-i", wav_path,
+                        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                        "-c:a", "aac", "-b:a", "192k", out],
+                       check=True)
+    finally:
+        for tmp in (wav_path, silent, listfile):
+            if os.path.exists(tmp):
+                os.remove(tmp)
+    # Tails stay for a resumed render or a retry of the final chunk.
+    with open(os.path.join(sdir, FINISHED), "w", encoding="utf-8") as stream:
+        stream.write(out + "\n")
+    return out
 
 
 # ----------------------------------------------------------------------------- nodes
@@ -444,7 +609,8 @@ class LongCatLongformSplit:
                 # name here. Unconnected, the name is read from the Write node.
                 "session": ("STRING", {"forceInput": True}),
             },
-            "hidden": {"prompt": "PROMPT"},
+            # extra_pnginfo carries the UI workflow, and a coordinator's pin to a session.
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ("AUDIO", "AUDIO", "INT", "INT", "INT", "INT", "INT", "INT", "INT",
@@ -462,9 +628,14 @@ class LongCatLongformSplit:
         # the session stored in the hidden prompt, not only on visible inputs.
         return float("nan")
 
+    def _skip(self):
+        if ExecutionBlocker is None:
+            raise RuntimeError("Nothing to render for this queue item.")
+        return tuple(ExecutionBlocker(None) for _ in self.RETURN_TYPES)
+
     def split(self, audio, anchor=ANCHOR_WINDOW_END, restart_min_seconds=RESTART_MIN,
               restart_max_seconds=RESTART_MAX, min_pause_seconds=MIN_PAUSE, session=None,
-              prompt=None):
+              prompt=None, extra_pnginfo=None):
         session = session or _session_from_prompt(prompt)
         wav, sr = audio["waveform"], int(audio["sample_rate"])
         total = int(round(wav.shape[-1] * FPS / sr))
@@ -476,10 +647,30 @@ class LongCatLongformSplit:
         if not spans:
             raise RuntimeError("The voiceover is too short to render.")
 
-        # The browser-side counter keeps climbing through surplus queue items and
-        # never learns that a render finished; the files on disk do.
-        index = next_chunk(session, spans)
-        if index is None:
+        # Shared across several GPUs or pods (parallel.py), or rendered here alone.
+        pinned = _pin(extra_pnginfo)
+        key = parallel.plan_key(total, restarts)
+        job = _load_job(_session_dir(session))
+        if job is not None and job.get("plan") != key:
+            print(f"{LOG} '{session}': ignoring the shared plan in job.json, made for "
+                  f"different restart settings.")
+            job = None
+        if pinned is not None and (job is None or pinned != session):
+            print(f"{LOG} coordinator item for '{pinned}': nothing to do here.")
+            return self._skip()
+        if job is None:
+            # The browser-side counter keeps climbing through surplus queue items and
+            # never learns that a render finished; the files on disk do.
+            index = next_chunk(session, spans)
+            workflow = (extra_pnginfo or {}).get("workflow") if isinstance(
+                extra_pnginfo, dict) else None
+            job = share_render(session, spans, key, index, prompt, workflow)
+        if job is not None:
+            index = next_shared_chunk(session, spans, job, audio, prompt,
+                                      pinned=pinned is not None)
+            if index is None:
+                return self._skip()
+        elif index is None:
             print(f"{LOG} '{session}' is finished ({len(spans)} chunks) - skipping. "
                   f"Change name_suffix, or delete output/{SESSION_ROOT}/{session}/, "
                   f"to render it again.")
@@ -703,40 +894,11 @@ class LongCatLongformWrite:
         if chunk_index < total_chunks - 1:
             return (msg,)
 
-        # Final chunk: stitch. A gap would shift everything after it out of sync.
-        paths = [os.path.join(sdir, f"chunk_{i:04d}.mp4") for i in range(total_chunks)]
-        missing = [i for i, p in enumerate(paths) if not os.path.exists(p)]
-        if missing:
-            raise RuntimeError(
-                f"Cannot stitch: chunks {missing} are not on disk. Queue again to "
-                f"render them in session '{session}'.")
-
-        listfile = os.path.join(sdir, "concat.txt")
-        with open(listfile, "w", encoding="utf-8") as f:
-            for p in paths:
-                # Relative, generated names avoid quoting user-supplied session
-                # paths (apostrophes and Windows separators break concat syntax).
-                f.write(f"file '{os.path.basename(p)}'\n")
-
-        silent = os.path.join(sdir, "video_only.mp4")
-        wav_path = os.path.join(sdir, ".original.wav")
-        out = os.path.join(folder_paths.get_output_directory(), filename)
-        try:
-            subprocess.run([ff, "-y", "-v", "error", "-f", "concat", "-safe", "0",
-                            "-i", listfile, "-c:v", "copy", "-an", silent], check=True)
-            _write_wav(original_audio, wav_path, ff)
-            subprocess.run([ff, "-y", "-v", "error", "-i", silent, "-i", wav_path,
-                            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-                            "-c:a", "aac", "-b:a", "192k", out],
-                           check=True)
-        finally:
-            for tmp in (wav_path, silent, listfile):
-                if os.path.exists(tmp):
-                    os.remove(tmp)
-        # Tails stay for a resumed render or a retry of the final chunk.
-
-        with open(finished, "w", encoding="utf-8") as stream:
-            stream.write(out + "\n")
+        # Final chunk: stitch. A shared render is stitched by its leader instead,
+        # once every worker's sections are on disk.
+        if _load_job(sdir) is not None:
+            return (msg + "; the leader stitches the shared render",)
+        out = stitch(session, total_chunks, original_audio, filename)
         msg = f"FINISHED: {out}"
         print(f"{LOG} {msg}")
         if stop_when_done:
@@ -825,6 +987,23 @@ def is_finished(session):
     """Whether Write has stitched this session's final video."""
     return os.path.exists(os.path.join(folder_paths.get_output_directory(),
                                        SESSION_ROOT, session, FINISHED))
+
+
+def waiting_on_others(session, worker=None):
+    """True while a shared render needs nothing more from this worker for now: its own
+    sections are done and the rest are with other workers (or another worker
+    stitches). The batch folder moves on to the next file meanwhile."""
+    sdir = os.path.join(folder_paths.get_output_directory(), SESSION_ROOT, session)
+    try:
+        job = parallel.load_job(sdir)
+    except (OSError, ValueError):
+        return False
+    if not job:
+        return False
+    worker = worker or parallel.worker_id()
+    if parallel.remaining(sdir, job["spans"], parallel.owned_chunks(job, worker)):
+        return False
+    return not (job["leader"] == worker and parallel.all_done(sdir, job["spans"]))
 
 
 def batch_folder(folder):
@@ -927,6 +1106,7 @@ class LongCatLongformAudioFolder:
                                "This clears ALL pending items, including unrelated "
                                "jobs."}),
             },
+            "hidden": {"extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ("AUDIO", "STRING", "STRING", "INT", "INT")
@@ -939,19 +1119,34 @@ class LongCatLongformAudioFolder:
         # Which file is next depends on files written by earlier queue items.
         return float("nan")
 
-    def next_file(self, folder, name_suffix="", stop_when_done=True):
+    def next_file(self, folder, name_suffix="", stop_when_done=True, extra_pnginfo=None):
         path, files = batch_files(folder)
         if not files:
             raise RuntimeError(f"No audio files in {path}. Add .wav, .mp3, .flac, .m4a, "
                                ".aac, .ogg or .opus files, then queue again.")
+        # A coordinator item works on one file's shared render only.
+        pinned = _pin(extra_pnginfo)
+        waiting = []
         for number, name in enumerate(files, 1):
             session = os.path.splitext(name)[0] + name_suffix
+            if pinned is not None and session != pinned:
+                continue
             if is_finished(session):
+                continue
+            if pinned is None and waiting_on_others(session):
+                waiting.append(session)
                 continue
             print(f"{LOG} batch: file {number}/{len(files)} '{name}' -> "
                   f"output/{session}.mp4")
             return (_load_audio_file(os.path.join(path, name)), session,
                     session + ".mp4", number, len(files))
+
+        if pinned is not None or waiting:
+            print(f"{LOG} batch: nothing for this worker now; other workers are finishing "
+                  f"{', '.join(waiting) or pinned}.")
+            if ExecutionBlocker is None:
+                raise RuntimeError("Nothing to render for this queue item.")
+            return tuple(ExecutionBlocker(None) for _ in self.RETURN_TYPES)
 
         print(f"{LOG} batch finished: all {len(files)} files in {path} are rendered.")
         if stop_when_done:

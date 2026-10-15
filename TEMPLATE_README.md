@@ -31,6 +31,10 @@ The final video lands in ComfyUI/output. To resume, queue again.
 
 **Against drift:** every chunk is pulled back toward the portrait, and every 40-60 s, in the middle of a real pause (mouth shut), the render restarts from the portrait itself. The cuts are planned from the voiceover up front.
 
+## Faster on several GPUs or pods
+
+One video can render on several GPUs at once: the render is split at the restarts into sections of about a minute, and each GPU renders its own. Use a pod with several GPUs, or several pods on the **same volume** (let the first one finish setup). Queue as usual: from the second chunk on, the coordinator shares the render out and keeps every GPU busy; the GPU you queued on stitches the video. About 3–4× faster for a 7-minute voiceover on 7–9 GPUs. LONGCAT_PARALLEL=0 turns it off.
+
 ## Hardware
 
 **bf16** workflow: 80 GB or more VRAM, Block Swap off. **fp8** workflow: 32–48 GB, Block Swap already on (20 blocks). Not yet benchmarked on a live pod.

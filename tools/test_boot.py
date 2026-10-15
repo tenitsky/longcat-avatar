@@ -53,6 +53,7 @@ class BootTests(unittest.TestCase):
         self.pip_log = self.base / "pip.log"
         self.git_log = self.base / "git.log"
         self.apt_log = self.base / "apt.log"
+        self.nohup_log = self.base / "nohup.log"
         self.start = self.base / "start.sh"
         self.constraints = self.base / "constraints.txt"
         self.constraints.write_text("torch==2.10.0\n", encoding="utf-8")
@@ -114,6 +115,11 @@ exit 0
 """)
         self.make_executable(self.bin / "ffmpeg", "#!/bin/bash\nexit 0\n")
         self.make_executable(self.bin / "sleep", "#!/bin/bash\nexit 0\n")
+        # The coordinator is a background service: record how setup starts it rather
+        # than leave a process running after the test.
+        self.make_executable(self.bin / "nohup", """#!/bin/bash
+printf '%s\\n' "$*" >> "$BOOT_NOHUP_LOG"
+""")
         # git: the template revision lookup fails (no checkout); the wrapper is a
         # fake repository whose checkout writes the files setup checks for.
         self.make_executable(self.bin / "git", """#!/bin/bash
@@ -188,7 +194,8 @@ python3 - <<'PY'
 import json, os
 from pathlib import Path
 keys = ('COMFYUI_PATH', 'HF_HOME', 'JUPYTER_CONFIG_DIR', 'JUPYTER_DATA_DIR',
-        'JUPYTER_RUNTIME_DIR', 'IPYTHONDIR', 'JUPYTER_DISABLE_AUTH', 'START_SCRIPT',
+        'JUPYTER_RUNTIME_DIR', 'IPYTHONDIR', 'JUPYTER_DISABLE_AUTH', 'LONGCAT_WORKER_ID',
+        'START_SCRIPT',
         'START_COMFYUI_DIR', 'START_DB_FILE', 'FB_DATABASE')
 Path(os.environ['BOOT_HANDOFF']).write_text(json.dumps({{k: os.environ.get(k) for k in keys}}))
 PY
@@ -278,7 +285,8 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
 
         self.env = dict(os.environ)
         for key in ("COMFYUI_PATH", "HF_HOME", "HF_TOKEN", "JUPYTER_NO_AUTH",
-                    "WANVIDEO_WRAPPER_REF", "COMFYUI_VENV_NAME", "LONGCAT_STORAGE"):
+                    "WANVIDEO_WRAPPER_REF", "COMFYUI_VENV_NAME", "LONGCAT_STORAGE",
+                    "LONGCAT_PARALLEL"):
             self.env.pop(key, None)
         self.env.update({
             "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
@@ -290,6 +298,8 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
             "BOOT_PIP_LOG": str(self.pip_log),
             "BOOT_GIT_LOG": str(self.git_log),
             "BOOT_APT_LOG": str(self.apt_log),
+            "BOOT_NOHUP_LOG": str(self.nohup_log),
+            "RUNPOD_POD_ID": "testpod",
             "BOOT_MODEL_FIXTURE": str(self.fixture),
         })
 
@@ -477,6 +487,16 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         state = json.loads(self.handoff.read_text())
         self.assertEqual(state["COMFYUI_PATH"], str(self.comfy))
         self.assertEqual(state["JUPYTER_DISABLE_AUTH"], "true")
+        # The coordinator runs in the background from the installed node pack, and
+        # ComfyUI gets its worker name through the image's start script.
+        self.assertEqual(state["LONGCAT_WORKER_ID"], "testpod-gpu0")
+        started = self.lines(self.nohup_log)
+        self.assertEqual(len(started), 1, started)
+        self.assertIn(f"{self.comfy}/custom_nodes/comfyui-longcat-longform/coordinator.py "
+                      f"--comfy {self.comfy} --python {self.comfy}/.venv-cu128/bin/python "
+                      f"--pod testpod", started[0])
+        self.assertTrue(
+            (self.comfy / "custom_nodes/comfyui-longcat-longform/parallel.py").is_file())
         runtime = Path(state["JUPYTER_RUNTIME_DIR"])
         self.assertNotIn(self.workspace, runtime.parents)
         self.assertEqual(runtime.stat().st_mode & 0o777, 0o700)
@@ -509,6 +529,19 @@ cuda = SimpleNamespace(is_available=lambda: os.environ.get("BOOT_GPU", "1") == "
         self.assertEqual(notebook.read_text(), '{"cells": []}\n')
         self.assertEqual(own_portrait.read_bytes(), b"my portrait")
         self.assertEqual(list(self.workspace.glob(".longcat-posix-*")), [])
+
+    def test_coordinator_switch_and_global_volume_install(self):
+        result = self.boot(LONGCAT_PARALLEL="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("renders stay on the GPU they are queued on", result.stdout)
+        self.assertEqual(self.lines(self.nohup_log), [])
+        shutil.rmtree(self.workspace)
+        self.workspace.mkdir()
+        result = self.boot_global()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # With a Global Volume the coordinator runs from the container-disk install and
+        # watches renders through its links into the volume.
+        self.assertIn(f"--comfy {self.local_comfy} ", self.lines(self.nohup_log)[-1])
 
     def test_new_pin_moves_the_wrapper(self):
         self.assertEqual(self.boot().returncode, 0)

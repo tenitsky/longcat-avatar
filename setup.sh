@@ -577,7 +577,23 @@ else
   echo "No workflows directory found in repo, skipping."
 fi
 
-# 5. Start ComfyUI using the official RunPod entrypoint
+# 5. Coordinator: shares one long render across every GPU here and every pod on the
+# same volume (custom_nodes/comfyui-longcat-longform/coordinator.py). With one GPU and
+# no other pod it stays idle. Starts one more ComfyUI per extra GPU. LONGCAT_PARALLEL=0
+# turns it off. The worker name reaches ComfyUI through the image's start script.
+LONGCAT_POD="${RUNPOD_POD_ID:-$(hostname)}"
+export LONGCAT_WORKER_ID="$LONGCAT_POD-gpu0"
+if [ "${LONGCAT_PARALLEL:-1}" != 0 ]; then
+  nohup python3 "$COMFYUI_PATH/custom_nodes/comfyui-longcat-longform/coordinator.py" \
+    --comfy "$COMFYUI_PATH" --python "$VPY" --pod "$LONGCAT_POD" \
+    --args-file /workspace/runpod-slim/comfyui_args.txt \
+    > /tmp/longcat-coordinator.log 2>&1 &
+  echo "Coordinator started for $LONGCAT_WORKER_ID (log: /tmp/longcat-coordinator.log)"
+else
+  echo "LONGCAT_PARALLEL=0: renders stay on the GPU they are queued on."
+fi
+
+# 6. Start ComfyUI using the official RunPod entrypoint
 echo "Setup complete! Handing over to start script..."
 if [ "$STORAGE_MODE" = global ]; then
   # The image creates comfyui_args.txt here before starting ComfyUI.

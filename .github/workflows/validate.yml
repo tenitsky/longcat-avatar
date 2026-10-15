@@ -30,9 +30,10 @@ jobs:
           python tools/build_workflow.py
           git diff --exit-code workflows
           python -B tools/test_workflows.py
-      - name: Storage and download regression tests
+      - name: Storage, shared-render and download regression tests
         run: |
           python -B tools/test_storage.py
+          python -B tools/test_parallel.py
           python -B tools/test_setup.py
       - name: Jupyter and setup integration tests
         run: |

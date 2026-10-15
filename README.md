@@ -85,7 +85,9 @@ On first pod boot, `setup.sh`:
 7. Copies the sample portrait and voiceover into `ComfyUI/input/` (never over a file
    of the same name) and installs the eight workflows (BF16 and FP8) into ComfyUI's
    **Workflows** sidebar
-8. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
+8. Starts the [coordinator](#one-video-on-several-gpus-or-pods-the-coordinator) in the
+   background, which shares long renders across GPUs and pods (idle with one GPU)
+9. Hands over to `/start.sh` (ComfyUI on port **8188**, JupyterLab on **8888**)
 
 On later boots every step finds its work done and is skipped, including the package
 install (a marker records the wrapper's requirements hash). With a Global Volume, a
@@ -371,6 +373,63 @@ later are picked up on the next run.
 - The final video uses your **original** audio track, encoded as AAC. Chunk positions
   share one 25 fps timeline, so there is no cumulative drift.
 
+## One video on several GPUs or pods (the coordinator)
+
+A chunk opens on the last frames of the chunk before it, so the chunks of a video must
+render in order. But every 40-60 s the render restarts from the portrait, and those
+chunks depend on nothing before them: a voiceover is really a series of independent
+**sections** of about a minute (roughly 13-19 chunks each). A 7-minute voiceover is
+about 7-9 sections. The template uses that to render one video on several GPUs at once.
+
+**How to use it.** Start more than one GPU, then queue as usual, in the same workflow:
+
+- **A pod with several GPUs:** nothing else to do. Each GPU runs its own ComfyUI.
+- **Several pods:** attach the **same volume** to all of them: a Global Volume (any
+  datacenter) or one Network Volume (one datacenter). Let the first pod finish setup
+  before starting the others.
+
+The first chunk renders on the GPU you queued on, so a one-chunk test stays a test.
+From the second chunk on, the render is shared out, and the log says so:
+`'<name>': 8 sections shared across 4 workers (...)`. You don't need a large batch
+count: the coordinator keeps every GPU's queue fed. The GPU you queued on stitches the
+final video when every section is done. With one GPU and no other pod, nothing changes.
+
+**How it works.** `coordinator.py` runs in the background on every pod (setup starts it;
+log: `/tmp/longcat-coordinator.log`). It:
+
+1. starts one more ComfyUI per extra GPU (ports 8189, 8190, ... on 127.0.0.1; logs
+   `/tmp/comfyui-gpu<N>.log`), so each GPU is a **worker**;
+2. writes a heartbeat for each local worker to `output/longcat_longform/.workers/`;
+3. watches for shared renders. When you queue, the Split node plans the sections, gives
+   each worker its share (longest first, to the least-loaded worker) and writes
+   `output/longcat_longform/<name>/job.json`;
+4. queues the same workflow on each of its workers, pinned to that render, until the
+   worker's sections are done, and gives the leader one more item to stitch.
+
+Each section renders chunk by chunk on one worker; continuation tails are shared through
+the volume. Every shared file has a single writer and nothing is renamed or locked, so
+it works on a Global Volume.
+
+**What to expect.** The video takes about as long as its longest section, plus each
+pod's start-up. 7-9 GPUs render a 7-minute voiceover about 3-4 times faster than one,
+not 7-9 times; more GPUs than sections don't help. The restart interval stays at
+40-60 s: shorter sections would allow more GPUs, at the cost of more visible resets.
+
+**Batch folders.** The GPU you queued on moves on to the next voiceover while the
+others finish the current one; each voiceover is shared out the same way.
+
+**If a pod goes away.** A worker silent for 5 minutes loses its unfinished sections to
+the live ones. If the pod you queued on goes away, queue again on another pod: it takes
+over, renders what is left and stitches.
+
+**Limits.**
+- Every pod must run the same template version and the same workflow settings.
+- Each extra ComfyUI loads its own copy of the model: a pod with several GPUs needs
+  system RAM to match (FP8 workflows with Block Swap keep part of the model there).
+- Extra pods only help with long voiceovers: each spends a few minutes starting up.
+- `LONGCAT_PARALLEL=0` turns it off: renders stay on the GPU they are queued on, and no
+  extra ComfyUI is started.
+
 ## GPU guidance
 
 These are estimates from the model size. **They haven't been measured on a pod yet.**
@@ -397,6 +456,7 @@ Attention is `sdpa`; `sageattn` works if SageAttention 2 is installed (1.0.6 doe
 | `COMFYUI_PATH` | `/workspace/runpod-slim/ComfyUI` | Leave unset; must match the base image's fixed startup path |
 | `HF_HOME` | `/workspace/.cache/huggingface` | Keeps the HF cache on the volume, not the container disk (Global Volume: `/opt/longcat-local/.cache/huggingface`) |
 | `LONGCAT_STORAGE` | `auto` | `network` or `global` overrides which volume setup thinks it has |
+| `LONGCAT_PARALLEL` | `1` | `0` turns off the [coordinator](#one-video-on-several-gpus-or-pods-the-coordinator): renders stay on the GPU they are queued on |
 | `TEMPLATE_REF` | `main` | Branch or tag of this repo the start command clones; `v1-network-volume` is the version before Global Volume support |
 
 ComfyUI runs from its own virtualenv (`$COMFYUI_PATH/.venv-cu128`; with a Global Volume
@@ -418,7 +478,13 @@ the Whisper frame count; continuation tails, trimming and stitching with real ff
 (real pauses chosen over short gaps, cuts mid-pause) and on the sample voiceover;
 resume, batch folders, and a full first boot and reboot
 of `setup.sh` against an offline image fixture, on a Network Volume and on a simulated
-Global Volume that refuses rename, hard links, symlinks and permission changes.
+Global Volume that refuses rename, hard links, symlinks and permission changes; one
+video shared across three workers through the real Split, Opening and Write nodes
+(every chunk once, by its section's owner, stitched frame-exact by the leader), and the
+coordinator against a fake ComfyUI API (feeding, stitching, backing off, reassigning).
+
+**Not yet verified on real pods:** the coordinator with several GPUs or pods, and how
+quickly a Global Volume shows one pod's files to another.
 
 **Not yet verified on a real Global Volume:** how RunPod reports its mount type (setup
 recognises it by its missing hard links), download and model-load speed from it, and
@@ -437,6 +503,9 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 ├── TEMPLATE_README.md                     # paste into the public template's README tab
 ├── custom_nodes/
 │   └── comfyui-longcat-longform/          # Split / Opening + Reference / Write + Stitch / Name / Prompt / Sigmas / Audio From Folder
+│       ├── parallel.py                    # shared renders: sections, workers, job.json
+│       ├── coordinator.py                 # background service: extra GPUs, heartbeats, feeding queues
+│       └── storage.py                     # volume detection and checks (run by setup.sh)
 ├── tools/
 │   ├── build_workflow.py                  # generates all workflow JSONs; re-run after edits
 │   ├── make_fp8.py                        # builds the FP8 model at setup (run by setup.sh)
@@ -444,6 +513,7 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 │   ├── test_workflows.py                  # graphs vs. node schemas, settings, layout, downloads
 │   ├── test_longform.py                   # planning, audio, continuation and ffmpeg stitching
 │   ├── test_storage.py                    # volume detection, Network and Global Volume checks
+│   ├── test_parallel.py                   # sections, assignment and the coordinator (fake ComfyUI)
 │   ├── test_boot.py                       # full setup with image/network fixtures (Linux)
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
