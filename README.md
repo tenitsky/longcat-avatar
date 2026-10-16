@@ -56,8 +56,8 @@ go where the mouth is shut:
    (flagged in the plan).
 
 The plan (time, pause length, how it was chosen) is printed in the log on the first
-chunk and saved as `output/longcat_longform/<name>/restart_plan.txt`. On the 71 s sample
-voiceover, the single restart lands at 51.2 s, in the middle of a 0.44 s pause, the only
+chunk and saved as `output/longcat_longform/<name>/restart_plan.txt`. On the 57 s sample
+voiceover, the single restart lands at 52.2 s, in the middle of a 0.92 s pause, the only
 real pause between 40 and 60 s.
 
 `restart_min_seconds`, `restart_max_seconds` and `min_pause_seconds` are on the **Split**
@@ -206,7 +206,7 @@ For the first launch, check the logs for **`Network Volume workspace ready at
    **`longcat_bf16_1_single_audio_640x640`** (80 GB GPUs) or
    **`longcat_fp8_1_single_audio_640x640`** (32-48 GB GPUs).
 2. Set **Load Portrait** and **Load Voiceover**. The workflows open on the bundled
-   samples (`sample_portrait.png`, `sample_voiceover.mp3`, 71 s), so the first run needs
+   samples (`sample_portrait.png`, `sample_voiceover.mp3`, 57 s), so the first run needs
    no uploads. The output is named after the audio file automatically.
 3. **Prompt** is optional. Leave it empty for a generic talking-head prompt (speaking to
    the camera, small natural motion, static camera and background), or describe the
@@ -360,7 +360,7 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 │   ├── test_boot.py                       # full setup with image/network fixtures (Linux)
 │   ├── test_jupyter.py                    # auth switch and real Jupyter Server smoke test
 │   └── test_setup.py                      # Bash download and start-command checks
-├── samples/                               # sample portrait + 71 s voiceover the workflows open on
+├── samples/                               # sample portrait + 57 s voiceover the workflows open on
 └── workflows/                             # the eight workflows listed above
 ```
 
