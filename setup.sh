@@ -320,7 +320,7 @@ for d in diffusion_models loras text_encoders vae audio_encoders; do
 done
 # The batch workflows render every voiceover dropped in here, one video per file.
 mkdir -p "$COMFYUI_PATH/input/batch_audio"
-# Sample portrait and voiceover (71 s) the workflows open on. Never overwrites a file
+# Sample portrait and voiceover (57 s) the workflows open on. Never overwrites a file
 # of the same name already on the volume.
 for sample in "$SCRIPT_DIR/samples/"*; do
   [ -e "$COMFYUI_PATH/input/$(basename "$sample")" ] || cp "$sample" "$COMFYUI_PATH/input/"
