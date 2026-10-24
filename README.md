@@ -1,5 +1,7 @@
 # LongCat-Video-Avatar 1.5: RunPod ComfyUI template (long-form talking avatar)
 
+> 🌐 More free RunPod and ComfyUI templates, with step-by-step guides: [tenitsky.com](https://tenitsky.com/#templates)
+
 A one-shot template that installs **LongCat-Video-Avatar 1.5** (Meituan, MIT licence)
 on RunPod with ComfyUI and JupyterLab. Its workflows turn **one portrait and a
 voiceover of any length** (or a folder of voiceovers) into a talking-head video,
@@ -370,3 +372,14 @@ selection, values against PyTorch's own cast, and loading with `safetensors`.
 - Inference code and technical report: https://github.com/meituan-longcat/LongCat-Video
 - ComfyUI nodes: https://github.com/kijai/ComfyUI-WanVideoWrapper (`LongCat/nodes.py`)
 - ComfyUI weights: https://huggingface.co/Kijai/WanVideo_comfy (`LongCat/`)
+
+<!-- tenitsky.com links -->
+## More templates and guides
+
+- 📖 [A consistent talking avatar from one photo with LTX-2.5 lip sync](https://tenitsky.com/guides/ltx-2-5-talking-avatar/)
+- 🐙 [SoulX-FlashHead Pro: long talking heads on one GPU](https://github.com/tenitsky/flashhead-pro-avatar)
+- 📖 [Free AI voiceovers with Qwen3-TTS: 9 voices, voice design and cloning](https://tenitsky.com/guides/qwen3-tts-voiceovers/)
+- ☁️ New to RunPod? [Introduction to RunPod: running ComfyUI in the cloud](https://tenitsky.com/guides/introduction-to-runpod/)
+- 🎓 New to ComfyUI? [ComfyUI for beginners: build a text-to-image workflow node by node](https://tenitsky.com/guides/comfyui-node-basics-text-to-image/)
+- 🌐 All templates and guides: [tenitsky.com](https://tenitsky.com/)
+- 📺 YouTube: [AI Art Pipeline](https://www.youtube.com/@aiartpipeline)
